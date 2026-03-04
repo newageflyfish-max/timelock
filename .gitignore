@@ -38,3 +38,5 @@ next-env.d.ts
 # starter/template artifacts
 timelock-starter.zip
 /timelock/
+.env.local
+.env.localecho
