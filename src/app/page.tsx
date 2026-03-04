@@ -12,6 +12,7 @@ import { Lock, Shield, Zap } from "lucide-react";
 export default function Home() {
   return (
     <div className="flex flex-col">
+      {/* <!-- deploy trigger --> */}
       {/* Hero */}
       <section className="container flex flex-col items-center justify-center gap-6 py-24 md:py-32 text-center">
         <div className="mx-auto max-w-3xl space-y-4">
