@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,39 +14,16 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function PricingPage() {
-  const [loading, setLoading] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
-
-  const handleCheckout = async (tier: string) => {
-    setLoading(tier);
-    setError(null);
-
-    try {
-      const res = await fetch("/api/stripe/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.url) {
-        window.location.href = data.url;
-        return;
-      }
-
-      // Show error from server
-      setError(data.error || "Failed to create checkout session");
-    } catch {
-      setError("Network error. Please try again.");
-    }
-
-    setLoading(null);
-  };
-
   return (
     <div className="container py-16 space-y-12">
+      {/* Coming soon banner */}
+      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-center text-sm text-amber-200">
+        <span className="mr-1.5">⚡</span>
+        Lightning escrow is coming soon. Subscriptions are not yet active
+        &mdash; sign up free and you&rsquo;ll be notified when real escrow goes
+        live.
+      </div>
+
       <div className="text-center space-y-4">
         <h1 className="text-3xl font-bold tracking-tight">Pricing</h1>
         <p className="text-muted-foreground max-w-lg mx-auto">
@@ -56,12 +31,6 @@ export default function PricingPage() {
           access, escrow management, and reputation tracking.
         </p>
       </div>
-
-      {error && (
-        <div className="max-w-md mx-auto p-3 rounded-md bg-destructive/10 text-destructive text-sm text-center">
-          {error}
-        </div>
-      )}
 
       <div className="grid gap-6 md:grid-cols-3 max-w-5xl mx-auto">
         {SUBSCRIPTION_TIERS.map((tier) => {
@@ -103,26 +72,13 @@ export default function PricingPage() {
                 </ul>
               </CardContent>
               <CardFooter>
-                {tier.price === 0 ? (
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => router.push("/signup")}
-                  >
-                    Get Started
-                  </Button>
-                ) : (
-                  <Button
-                    className="w-full"
-                    variant={isPopular ? "default" : "secondary"}
-                    onClick={() => handleCheckout(tier.price_id)}
-                    disabled={loading === tier.price_id || !tier.price_id}
-                  >
-                    {loading === tier.price_id
-                      ? "Redirecting..."
-                      : "Subscribe"}
-                  </Button>
-                )}
+                <Button
+                  variant="outline"
+                  className="w-full opacity-50 cursor-not-allowed"
+                  disabled
+                >
+                  {tier.price === 0 ? "Get Started" : "Subscribe"}
+                </Button>
               </CardFooter>
             </Card>
           );
