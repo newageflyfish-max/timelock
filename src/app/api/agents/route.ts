@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { notifyNewSignup } from "@/lib/email";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
@@ -61,6 +62,13 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+
+  // Fire-and-forget signup notification — never blocks the response
+  const { count } = await supabase
+    .from("agents")
+    .select("*", { count: "exact", head: true });
+
+  notifyNewSignup(aliasClean, count ?? 1);
 
   return NextResponse.json({ data, error: null }, { status: 201 });
 }
