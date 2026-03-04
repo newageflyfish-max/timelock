@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { canTransition, clampReputation } from "@/lib/types";
+import { clampReputation } from "@/lib/types";
 import type { TaskState, DisputeResolution } from "@/lib/types";
-import { payInvoice, VoltageError } from "@/lib/lightning";
+import { payInvoice, VoltageError, getNodeBalance } from "@/lib/lightning";
 import { authenticateRequest } from "@/lib/api-key-auth";
+import { atomicStateTransition } from "@/lib/task-transition";
 
 export async function POST(
   request: Request,
@@ -45,13 +46,13 @@ export async function POST(
     );
   }
 
-  // DISPUTED → RESOLVED only
+  // Accept DISPUTED (first resolution) or RESOLVED (payment retry after failure)
   const currentState = task.state as TaskState;
-  if (!canTransition(currentState, "RESOLVED")) {
+  if (currentState !== "DISPUTED" && currentState !== "RESOLVED") {
     return NextResponse.json(
       {
         data: null,
-        error: `Cannot resolve task in state ${currentState}. Task must be in DISPUTED state.`,
+        error: `Cannot resolve task in state ${currentState}. Task must be in DISPUTED or RESOLVED state.`,
       },
       { status: 400 }
     );
@@ -158,6 +159,53 @@ export async function POST(
     }
   }
 
+  // CRITICAL-6: Pre-payment liquidity check
+  try {
+    const balance = await getNodeBalance();
+    if (balance.confirmedBalance < task.amount_sats) {
+      console.log(
+        `[RESOLVE] Insufficient liquidity: need ${task.amount_sats} sats, have ${balance.confirmedBalance}`
+      );
+      return NextResponse.json(
+        {
+          data: null,
+          error:
+            "Insufficient node liquidity for payment. Please try again later.",
+        },
+        { status: 503 }
+      );
+    }
+  } catch (err) {
+    if (err instanceof VoltageError) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: "Lightning service unavailable for liquidity check",
+        },
+        { status: 503 }
+      );
+    }
+    console.log(
+      "[RESOLVE] Liquidity check failed, proceeding:",
+      (err as Error).message
+    );
+  }
+
+  // CRITICAL-1: Atomically claim DISPUTED → RESOLVED
+  if (currentState === "DISPUTED") {
+    const claimResult = await atomicStateTransition(
+      params.id,
+      "DISPUTED",
+      "RESOLVED"
+    );
+    if (!claimResult.success) {
+      return NextResponse.json(
+        { data: null, error: claimResult.error },
+        { status: 409 }
+      );
+    }
+  }
+
   const now = new Date().toISOString();
 
   // Update the dispute record
@@ -192,7 +240,7 @@ export async function POST(
         return NextResponse.json(
           {
             data: null,
-            error: `Lightning refund to buyer failed: ${result.error}`,
+            error: `Lightning refund to buyer failed: ${result.error}. Task remains in RESOLVED state for retry.`,
           },
           { status: 500 }
         );
@@ -208,7 +256,7 @@ export async function POST(
         return NextResponse.json(
           {
             data: null,
-            error: `Lightning payment to seller failed: ${result.error}`,
+            error: `Lightning payment to seller failed: ${result.error}. Task remains in RESOLVED state for retry.`,
           },
           { status: 500 }
         );
@@ -223,11 +271,13 @@ export async function POST(
 
       const buyerResult = await payInvoice(buyer_invoice!, halfAmount);
       if (!buyerResult.success) {
-        console.log(`[RESOLVE] Buyer split payment failed: ${buyerResult.error}`);
+        console.log(
+          `[RESOLVE] Buyer split payment failed: ${buyerResult.error}`
+        );
         return NextResponse.json(
           {
             data: null,
-            error: `Lightning split payment to buyer failed: ${buyerResult.error}`,
+            error: `Lightning split payment to buyer failed: ${buyerResult.error}. Task remains in RESOLVED state for retry.`,
           },
           { status: 500 }
         );
@@ -241,7 +291,7 @@ export async function POST(
         return NextResponse.json(
           {
             data: null,
-            error: `Lightning split payment to seller failed: ${sellerResult.error}. Buyer already received ${halfAmount} sats.`,
+            error: `Lightning split payment to seller failed: ${sellerResult.error}. Buyer already received ${halfAmount} sats. Task remains in RESOLVED state.`,
           },
           { status: 500 }
         );
@@ -254,29 +304,36 @@ export async function POST(
   } catch (err) {
     if (err instanceof VoltageError) {
       return NextResponse.json(
-        { data: null, error: "Lightning service unavailable" },
+        {
+          data: null,
+          error:
+            "Lightning service unavailable. Task remains in RESOLVED state for retry.",
+        },
         { status: 503 }
       );
     }
     return NextResponse.json(
-      { data: null, error: "Lightning payment failed" },
+      {
+        data: null,
+        error:
+          "Lightning payment failed. Task remains in RESOLVED state for retry.",
+      },
       { status: 500 }
     );
   }
 
-  // Move task: DISPUTED → RESOLVED → SETTLED
-  const { data: updated, error: updateError } = await supabase
-    .from("tasks")
-    .update({ state: "SETTLED" })
-    .eq("id", params.id)
-    .select()
-    .single();
+  // CRITICAL-1: Atomic RESOLVED → SETTLED
+  const settleResult = await atomicStateTransition(
+    params.id,
+    "RESOLVED",
+    "SETTLED"
+  );
 
-  if (updateError) {
-    console.log("[RESOLVE] Task update error:", updateError.message);
+  if (!settleResult.success) {
+    console.log("[RESOLVE] Settle conflict:", settleResult.error);
     return NextResponse.json(
-      { data: null, error: updateError.message },
-      { status: 500 }
+      { data: null, error: settleResult.error },
+      { status: 409 }
     );
   }
 
@@ -377,7 +434,9 @@ export async function POST(
     if (task.seller_agent_id) {
       const { data: seller } = await supabase
         .from("agents")
-        .select("reputation_score, total_tasks_completed, total_sats_earned")
+        .select(
+          "reputation_score, total_tasks_completed, total_sats_earned"
+        )
         .eq("id", task.seller_agent_id)
         .single();
 
@@ -389,7 +448,8 @@ export async function POST(
               seller.reputation_score + 75
             ),
             total_tasks_completed: seller.total_tasks_completed + 1,
-            total_sats_earned: seller.total_sats_earned + task.amount_sats,
+            total_sats_earned:
+              seller.total_sats_earned + task.amount_sats,
             last_active: now,
           })
           .eq("id", task.seller_agent_id);
@@ -485,7 +545,7 @@ export async function POST(
   );
 
   return NextResponse.json({
-    data: { task: updated, dispute },
+    data: { task: settleResult.task, dispute },
     error: null,
   });
 }

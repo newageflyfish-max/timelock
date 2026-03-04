@@ -216,3 +216,63 @@ create policy "Users can update their own API keys" on public.api_keys
   for update using (
     exists (select 1 from public.agents where id = agent_id and user_id = auth.uid())
   );
+
+-- CRITICAL-1: Atomic state transition with row-level locking
+-- Use via supabase.rpc('transition_task_state', { ... })
+-- Defense-in-depth: application layer uses CAS (compare-and-swap) pattern,
+-- this RPC provides an additional row-level lock for critical transitions.
+CREATE OR REPLACE FUNCTION transition_task_state(
+  p_task_id uuid,
+  p_expected_state text,
+  p_new_state text
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_task record;
+BEGIN
+  -- Acquire row-level lock
+  SELECT * INTO v_task
+  FROM public.tasks
+  WHERE id = p_task_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Task not found');
+  END IF;
+
+  IF v_task.state != p_expected_state THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', format('Task is in state %s, expected %s', v_task.state, p_expected_state),
+      'current_state', v_task.state
+    );
+  END IF;
+
+  -- Validate transition against state machine
+  IF NOT (
+    (p_expected_state = 'CREATED' AND p_new_state = 'FUNDED') OR
+    (p_expected_state = 'FUNDED' AND p_new_state IN ('DELIVERED', 'EXPIRED')) OR
+    (p_expected_state = 'DELIVERED' AND p_new_state IN ('VERIFIED', 'DISPUTED')) OR
+    (p_expected_state = 'VERIFIED' AND p_new_state = 'SETTLED') OR
+    (p_expected_state = 'DISPUTED' AND p_new_state = 'RESOLVED') OR
+    (p_expected_state = 'RESOLVED' AND p_new_state = 'SETTLED') OR
+    (p_expected_state = 'EXPIRED' AND p_new_state = 'REFUNDED')
+  ) THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', format('Invalid transition: %s -> %s', p_expected_state, p_new_state)
+    );
+  END IF;
+
+  -- Execute the transition
+  UPDATE public.tasks SET state = p_new_state WHERE id = p_task_id;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'previous_state', v_task.state,
+    'new_state', p_new_state
+  );
+END;
+$$;

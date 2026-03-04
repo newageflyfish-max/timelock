@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { MAX_ESCROW_SATS } from "@/lib/types";
+import { MAX_ESCROW_SATS, MAX_CONCURRENT_ACTIVE_TASKS } from "@/lib/types";
 import { authenticateRequest } from "@/lib/api-key-auth";
 
 export async function POST(request: Request) {
@@ -14,6 +14,25 @@ export async function POST(request: Request) {
 
   const { agent } = auth;
   const supabase = createClient();
+
+  // CRITICAL-3: Check concurrent active task limit
+  const { count: activeTasks } = await supabase
+    .from("tasks")
+    .select("*", { count: "exact", head: true })
+    .or(
+      `buyer_agent_id.eq.${agent.id},seller_agent_id.eq.${agent.id}`
+    )
+    .in("state", ["FUNDED", "DELIVERED", "DISPUTED"]);
+
+  if ((activeTasks ?? 0) >= MAX_CONCURRENT_ACTIVE_TASKS) {
+    return NextResponse.json(
+      {
+        data: null,
+        error: `Concurrent task limit exceeded: max ${MAX_CONCURRENT_ACTIVE_TASKS} active tasks (FUNDED + DELIVERED + DISPUTED) per agent`,
+      },
+      { status: 429 }
+    );
+  }
 
   let body: Record<string, unknown>;
   try {

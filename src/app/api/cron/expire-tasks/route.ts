@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { clampReputation } from "@/lib/types";
 import { payInvoice } from "@/lib/lightning";
+import { atomicStateTransition } from "@/lib/task-transition";
 
 const ABANDON_PENALTY = -200;
 
@@ -50,21 +51,21 @@ export async function POST(request: Request) {
   }> = [];
 
   for (const task of expiredTasks) {
-    // Move task to EXPIRED
-    const { error: updateError } = await supabase
-      .from("tasks")
-      .update({ state: "EXPIRED" })
-      .eq("id", task.id);
+    // CRITICAL-1: Atomic CAS transition FUNDED → EXPIRED
+    const transition = await atomicStateTransition(
+      task.id,
+      "FUNDED",
+      "EXPIRED"
+    );
 
-    if (updateError) {
+    if (!transition.success) {
       console.log(
-        `[CRON] Failed to expire task ${task.id}:`,
-        updateError.message
+        `[CRON] Failed to expire task ${task.id}: ${transition.error}`
       );
       refundResults.push({
         taskId: task.id,
         refunded: false,
-        error: updateError.message,
+        error: transition.error,
       });
       continue;
     }

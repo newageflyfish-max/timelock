@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { canTransition, clampReputation } from "@/lib/types";
+import { clampReputation, COMPLETION_RATE_LIMITS } from "@/lib/types";
 import type { TaskState, ReputationEventType } from "@/lib/types";
-import { payInvoice, VoltageError } from "@/lib/lightning";
+import { payInvoice, VoltageError, getNodeBalance } from "@/lib/lightning";
 import { authenticateRequest } from "@/lib/api-key-auth";
+import { atomicStateTransition } from "@/lib/task-transition";
 
 export async function POST(
   request: Request,
@@ -40,13 +41,13 @@ export async function POST(
     );
   }
 
-  // DELIVERED → VERIFIED (then auto-settle)
+  // Accept DELIVERED (first verification) or VERIFIED (payment retry after failure)
   const currentState = task.state as TaskState;
-  if (!canTransition(currentState, "VERIFIED")) {
+  if (currentState !== "DELIVERED" && currentState !== "VERIFIED") {
     return NextResponse.json(
       {
         data: null,
-        error: `Cannot verify task in state ${currentState}. Task must be in DELIVERED state.`,
+        error: `Cannot verify task in state ${currentState}. Task must be in DELIVERED or VERIFIED state.`,
       },
       { status: 400 }
     );
@@ -99,6 +100,81 @@ export async function POST(
     );
   }
 
+  // CRITICAL-2: Sybil farming rate limit — check completions in last 24h
+  const twentyFourHoursAgo = new Date(
+    Date.now() - 24 * 60 * 60 * 1000
+  ).toISOString();
+  const { count: recentCompletions } = await supabase
+    .from("reputation_events")
+    .select("*", { count: "exact", head: true })
+    .eq("agent_id", agent.id)
+    .in("event_type", ["COMPLETED", "PERFECT"])
+    .gte("created_at", twentyFourHoursAgo);
+
+  // Determine agent's tier (default to Dev)
+  const tierName = "Dev"; // All agents default to Dev; tier comes from Stripe subscription
+  const completionLimit = COMPLETION_RATE_LIMITS[tierName] ?? 10;
+
+  if ((recentCompletions ?? 0) >= completionLimit) {
+    return NextResponse.json(
+      {
+        data: null,
+        error: `Rate limit exceeded: max ${completionLimit} verifications per 24h for ${tierName} tier`,
+      },
+      { status: 429 }
+    );
+  }
+
+  // CRITICAL-6: Pre-payment liquidity check
+  try {
+    const balance = await getNodeBalance();
+    if (balance.confirmedBalance < task.amount_sats) {
+      console.log(
+        `[VERIFY] Insufficient liquidity: need ${task.amount_sats} sats, have ${balance.confirmedBalance}`
+      );
+      return NextResponse.json(
+        {
+          data: null,
+          error:
+            "Insufficient node liquidity for payment. Please try again later.",
+        },
+        { status: 503 }
+      );
+    }
+  } catch (err) {
+    if (err instanceof VoltageError) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: "Lightning service unavailable for liquidity check",
+        },
+        { status: 503 }
+      );
+    }
+    // Non-fatal: proceed with payment attempt if balance check fails
+    console.log(
+      "[VERIFY] Liquidity check failed, proceeding:",
+      (err as Error).message
+    );
+  }
+
+  // CRITICAL-1: Atomically claim DELIVERED → VERIFIED to block concurrent /dispute
+  if (currentState === "DELIVERED") {
+    const claimResult = await atomicStateTransition(
+      params.id,
+      "DELIVERED",
+      "VERIFIED"
+    );
+    if (!claimResult.success) {
+      return NextResponse.json(
+        { data: null, error: claimResult.error },
+        { status: 409 }
+      );
+    }
+  }
+
+  // Task is now in VERIFIED state — safe from /dispute race condition
+
   // Determine result from score
   let result: "PASS" | "FAIL" | "PARTIAL";
   if (score >= 70) result = "PASS";
@@ -137,14 +213,19 @@ export async function POST(
   } catch (err) {
     if (err instanceof VoltageError) {
       return NextResponse.json(
-        { data: null, error: "Lightning service unavailable" },
+        {
+          data: null,
+          error:
+            "Lightning service unavailable. Task remains in VERIFIED state for retry.",
+        },
         { status: 503 }
       );
     }
     return NextResponse.json(
       {
         data: null,
-        error: "Lightning payment failed. Task remains in DELIVERED state for retry.",
+        error:
+          "Lightning payment failed. Task remains in VERIFIED state for retry.",
       },
       { status: 500 }
     );
@@ -157,25 +238,24 @@ export async function POST(
     return NextResponse.json(
       {
         data: null,
-        error: `Lightning payment failed: ${paymentResult.error}. Task remains in DELIVERED state for retry.`,
+        error: `Lightning payment failed: ${paymentResult.error}. Task remains in VERIFIED state for retry.`,
       },
       { status: 500 }
     );
   }
 
-  // DELIVERED → VERIFIED → SETTLED (atomic)
-  const { data: updated, error: updateError } = await supabase
-    .from("tasks")
-    .update({ state: "SETTLED" })
-    .eq("id", params.id)
-    .select()
-    .single();
+  // CRITICAL-1: Atomic VERIFIED → SETTLED
+  const settleResult = await atomicStateTransition(
+    params.id,
+    "VERIFIED",
+    "SETTLED"
+  );
 
-  if (updateError) {
-    console.log("[VERIFY] Task update error:", updateError.message);
+  if (!settleResult.success) {
+    console.log("[VERIFY] Settle conflict:", settleResult.error);
     return NextResponse.json(
-      { data: null, error: updateError.message },
-      { status: 500 }
+      { data: null, error: settleResult.error },
+      { status: 409 }
     );
   }
 
@@ -276,7 +356,11 @@ export async function POST(
   );
 
   return NextResponse.json({
-    data: { task: updated, verification, paymentHash: paymentResult.paymentHash },
+    data: {
+      task: settleResult.task,
+      verification,
+      paymentHash: paymentResult.paymentHash,
+    },
     error: null,
   });
 }

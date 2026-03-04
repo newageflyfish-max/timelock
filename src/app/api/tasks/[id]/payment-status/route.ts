@@ -4,6 +4,7 @@ import { canTransition } from "@/lib/types";
 import type { TaskState } from "@/lib/types";
 import { checkInvoicePaid, VoltageError } from "@/lib/lightning";
 import { authenticateRequest } from "@/lib/api-key-auth";
+import { atomicStateTransition } from "@/lib/task-transition";
 
 export async function POST(
   request: Request,
@@ -94,22 +95,21 @@ export async function POST(
         .eq("task_id", params.id)
         .eq("state", "PENDING");
 
-      // Move task to FUNDED
-      const { data: updated, error: updateError } = await supabase
-        .from("tasks")
-        .update({ state: "FUNDED" })
-        .eq("id", params.id)
-        .select()
-        .single();
+      // CRITICAL-1: Atomic CAS transition CREATED → FUNDED
+      const transition = await atomicStateTransition(
+        params.id,
+        "CREATED",
+        "FUNDED"
+      );
 
-      if (updateError) {
+      if (!transition.success) {
         console.log(
-          "[PAYMENT-STATUS] Task update error:",
-          updateError.message
+          "[PAYMENT-STATUS] State conflict:",
+          transition.error
         );
         return NextResponse.json(
-          { data: null, error: updateError.message },
-          { status: 500 }
+          { data: null, error: transition.error },
+          { status: 409 }
         );
       }
 
@@ -120,7 +120,7 @@ export async function POST(
       return NextResponse.json({
         data: {
           paid: true,
-          task: updated,
+          task: transition.task,
           settledAt: paymentStatus.settledAt?.toISOString(),
         },
         error: null,

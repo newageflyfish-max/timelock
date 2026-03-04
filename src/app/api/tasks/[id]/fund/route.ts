@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { canTransition } from "@/lib/types";
+import { validateTransition } from "@/lib/types";
 import type { TaskState } from "@/lib/types";
 import { createHoldInvoice, VoltageError } from "@/lib/lightning";
 import { authenticateRequest } from "@/lib/api-key-auth";
@@ -40,9 +40,11 @@ export async function POST(
     );
   }
 
-  // CREATED → FUNDED only
+  // CRITICAL-4: Use centralized validator
   const currentState = task.state as TaskState;
-  if (!canTransition(currentState, "FUNDED")) {
+  try {
+    validateTransition(currentState, "FUNDED");
+  } catch {
     return NextResponse.json(
       {
         data: null,
@@ -100,7 +102,7 @@ export async function POST(
     );
   }
 
-  // Store payment hash on task for polling
+  // CRITICAL-1: CAS — ensure task is still in CREATED state before writing payment_hash
   const { data: updated, error: updateError } = await supabase
     .from("tasks")
     .update({
@@ -111,14 +113,15 @@ export async function POST(
       },
     })
     .eq("id", params.id)
+    .eq("state", "CREATED")
     .select()
     .single();
 
-  if (updateError) {
-    console.log("[FUND] Task update error:", updateError.message);
+  if (updateError || !updated) {
+    console.log("[FUND] Task update error (state conflict):", updateError?.message);
     return NextResponse.json(
-      { data: null, error: updateError.message },
-      { status: 500 }
+      { data: null, error: "State conflict: task state changed during funding" },
+      { status: 409 }
     );
   }
 

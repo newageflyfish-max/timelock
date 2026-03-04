@@ -17,23 +17,31 @@ import { cn } from "@/lib/utils";
 
 export default function PricingPage() {
   const [loading, setLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  const handleCheckout = async (priceId: string) => {
-    setLoading(priceId);
+  const handleCheckout = async (tier: string) => {
+    setLoading(tier);
+    setError(null);
 
-    const res = await fetch("/api/stripe/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ price_id: priceId }),
-    });
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tier }),
+      });
 
-    if (res.ok) {
-      const { url } = await res.json();
-      if (url) {
-        window.location.href = url;
+      const data = await res.json();
+
+      if (res.ok && data.url) {
+        window.location.href = data.url;
         return;
       }
+
+      // Show error from server
+      setError(data.error || "Failed to create checkout session");
+    } catch {
+      setError("Network error. Please try again.");
     }
 
     setLoading(null);
@@ -48,6 +56,12 @@ export default function PricingPage() {
           access, escrow management, and reputation tracking.
         </p>
       </div>
+
+      {error && (
+        <div className="max-w-md mx-auto p-3 rounded-md bg-destructive/10 text-destructive text-sm text-center">
+          {error}
+        </div>
+      )}
 
       <div className="grid gap-6 md:grid-cols-3 max-w-5xl mx-auto">
         {SUBSCRIPTION_TIERS.map((tier) => {

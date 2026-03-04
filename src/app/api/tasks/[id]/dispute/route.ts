@@ -1,8 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { canTransition, clampReputation } from "@/lib/types";
+import { clampReputation, validateTransition } from "@/lib/types";
 import type { TaskState } from "@/lib/types";
 import { authenticateRequest } from "@/lib/api-key-auth";
+import { atomicStateTransition } from "@/lib/task-transition";
 
 const DISPUTE_PENALTY = -75;
 
@@ -44,9 +45,11 @@ export async function POST(
     );
   }
 
-  // DELIVERED → DISPUTED only
+  // CRITICAL-4: Use centralized validator
   const currentState = task.state as TaskState;
-  if (!canTransition(currentState, "DISPUTED")) {
+  try {
+    validateTransition(currentState, "DISPUTED");
+  } catch {
     return NextResponse.json(
       {
         data: null,
@@ -81,6 +84,22 @@ export async function POST(
     );
   }
 
+  // CRITICAL-1: Atomically claim DELIVERED → DISPUTED to block concurrent /verify
+  const transition = await atomicStateTransition(
+    params.id,
+    "DELIVERED",
+    "DISPUTED"
+  );
+
+  if (!transition.success) {
+    return NextResponse.json(
+      { data: null, error: transition.error },
+      { status: 409 }
+    );
+  }
+
+  // Task is now DISPUTED — safe from /verify race condition
+
   // Create dispute
   const { data: dispute, error: disputeError } = await supabase
     .from("disputes")
@@ -98,22 +117,6 @@ export async function POST(
     console.log("[DISPUTE] Insert error:", disputeError.message);
     return NextResponse.json(
       { data: null, error: "Failed to create dispute" },
-      { status: 500 }
-    );
-  }
-
-  // Move task to DISPUTED
-  const { data: updated, error: updateError } = await supabase
-    .from("tasks")
-    .update({ state: "DISPUTED" })
-    .eq("id", params.id)
-    .select()
-    .single();
-
-  if (updateError) {
-    console.log("[DISPUTE] Task update error:", updateError.message);
-    return NextResponse.json(
-      { data: null, error: updateError.message },
       { status: 500 }
     );
   }
@@ -178,7 +181,7 @@ export async function POST(
   );
 
   return NextResponse.json({
-    data: { task: updated, dispute },
+    data: { task: transition.task, dispute },
     error: null,
   });
 }

@@ -1,8 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import { canTransition } from "@/lib/types";
+import { validateTransition } from "@/lib/types";
 import type { TaskState } from "@/lib/types";
 import { authenticateRequest } from "@/lib/api-key-auth";
+import { atomicStateTransition } from "@/lib/task-transition";
 
 export async function POST(
   request: Request,
@@ -39,9 +40,11 @@ export async function POST(
     );
   }
 
-  // FUNDED → DELIVERED only
+  // CRITICAL-4: Use centralized validator
   const currentState = task.state as TaskState;
-  if (!canTransition(currentState, "DELIVERED")) {
+  try {
+    validateTransition(currentState, "DELIVERED");
+  } catch {
     return NextResponse.json(
       {
         data: null,
@@ -88,22 +91,22 @@ export async function POST(
       : { delivered_at: new Date().toISOString() }),
   };
 
-  const { data: updated, error: updateError } = await supabase
-    .from("tasks")
-    .update({
-      state: "DELIVERED",
+  // CRITICAL-1: Atomic CAS transition FUNDED → DELIVERED
+  const transition = await atomicStateTransition(
+    params.id,
+    "FUNDED",
+    "DELIVERED",
+    {
       deliverable_url: deliverable_url.trim(),
       metadata,
-    })
-    .eq("id", params.id)
-    .select()
-    .single();
+    }
+  );
 
-  if (updateError) {
-    console.log("[DELIVER] Task update error:", updateError.message);
+  if (!transition.success) {
+    console.log("[DELIVER] State conflict:", transition.error);
     return NextResponse.json(
-      { data: null, error: updateError.message },
-      { status: 500 }
+      { data: null, error: transition.error },
+      { status: 409 }
     );
   }
 
@@ -111,5 +114,5 @@ export async function POST(
     `[TASK DELIVER] ${params.id} → FUNDED → DELIVERED${isLate ? " (LATE)" : ""}`
   );
 
-  return NextResponse.json({ data: updated, error: null });
+  return NextResponse.json({ data: transition.task, error: null });
 }

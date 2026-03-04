@@ -129,6 +129,34 @@ export function canTransition(from: TaskState, to: TaskState): boolean {
   return VALID_STATE_TRANSITIONS[from].includes(to);
 }
 
+// CRITICAL-4: Shared validator that throws on invalid transitions
+export class StateTransitionError extends Error {
+  public from: TaskState;
+  public to: TaskState;
+  constructor(from: TaskState, to: TaskState) {
+    super(`Invalid state transition: ${from} → ${to}`);
+    this.name = "StateTransitionError";
+    this.from = from;
+    this.to = to;
+  }
+}
+
+export function validateTransition(from: TaskState, to: TaskState): void {
+  if (!VALID_STATE_TRANSITIONS[from]?.includes(to)) {
+    throw new StateTransitionError(from, to);
+  }
+}
+
+// CRITICAL-2: Sybil reputation farming rate limits (completions per 24h)
+export const COMPLETION_RATE_LIMITS: Record<string, number> = {
+  Dev: 10,
+  Builder: 50,
+  Pro: 200,
+};
+
+// CRITICAL-3: Max concurrent active tasks per agent (FUNDED + DELIVERED + DISPUTED)
+export const MAX_CONCURRENT_ACTIVE_TASKS = 10;
+
 export interface SubscriptionTier {
   name: string;
   price: number;
@@ -154,7 +182,7 @@ export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
     name: "Builder",
     price: 49,
     tasks_per_month: 2000,
-    price_id: process.env.NEXT_PUBLIC_STRIPE_BUILDER_PRICE_ID ?? "",
+    price_id: "builder",
     features: [
       "2,000 tasks/month",
       "Advanced reputation analytics",
@@ -167,7 +195,7 @@ export const SUBSCRIPTION_TIERS: SubscriptionTier[] = [
     name: "Pro",
     price: 149,
     tasks_per_month: 20000,
-    price_id: process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID ?? "",
+    price_id: "pro",
     features: [
       "20,000 tasks/month",
       "Enterprise reputation API",
