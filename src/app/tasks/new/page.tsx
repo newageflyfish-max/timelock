@@ -47,6 +47,35 @@ const selectClass =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 appearance-none";
 
 // ---------------------------------------------------------------------------
+// Sat presets per task type
+// ---------------------------------------------------------------------------
+
+const SAT_PRESETS: Record<TaskType, number[]> = {
+  smart_contract_audit: [250_000, 500_000, 750_000],
+  api_integration: [100_000, 250_000, 500_000],
+  data_pipeline: [100_000, 250_000, 500_000],
+  agent_task: [10_000, 25_000, 50_000],
+  on_chain_action: [5_000, 10_000, 25_000],
+  research_analysis: [25_000, 50_000, 100_000],
+  custom: [10_000, 50_000, 100_000],
+};
+
+const MAX_ESCROW_SATS = 1_000_000;
+
+function fmtPresetSats(sats: number): string {
+  if (sats >= 1_000_000) return `${sats / 1_000_000}M`;
+  if (sats >= 1_000) return `${sats / 1_000}k`;
+  return sats.toString();
+}
+
+function satsToUsd(sats: number, btcPrice: number | null): string | null {
+  if (btcPrice === null) return null;
+  const usd = (sats / 100_000_000) * btcPrice;
+  if (usd < 0.01) return usd.toFixed(4);
+  return usd.toFixed(2);
+}
+
+// ---------------------------------------------------------------------------
 // Structured field builders per task type
 // ---------------------------------------------------------------------------
 
@@ -575,6 +604,10 @@ export default function NewTaskPage() {
       ? (parseInt(amountSats, 10) / 100_000_000) * btcPrice
       : null;
 
+  const overCap = amountSats
+    ? parseInt(amountSats, 10) > MAX_ESCROW_SATS
+    : false;
+
   // ---- Field setter (resets fields on task type change) ----
 
   const setField = (key: string, value: string) => {
@@ -596,6 +629,12 @@ export default function NewTaskPage() {
     const amount = parseInt(amountSats, 10);
     if (isNaN(amount) || amount <= 0) {
       setError("Amount must be a positive number");
+      setLoading(false);
+      return;
+    }
+
+    if (amount > MAX_ESCROW_SATS) {
+      setError("Maximum escrow amount is 1,000,000 sats on the free tier.");
       setLoading(false);
       return;
     }
@@ -717,6 +756,35 @@ export default function NewTaskPage() {
                 required
                 min={1}
               />
+
+              {/* Preset buttons */}
+              <div className="flex flex-wrap gap-2">
+                {SAT_PRESETS[taskType].map((preset) => {
+                  const usd = satsToUsd(preset, btcPrice);
+                  return (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setAmountSats(preset.toString())}
+                      className="rounded-md border border-input bg-background px-2.5 py-1 text-xs font-mono hover:bg-accent hover:text-accent-foreground transition-colors"
+                    >
+                      {fmtPresetSats(preset)} sats
+                      {usd && (
+                        <span className="text-muted-foreground ml-1">
+                          ≈ ${usd}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {overCap && (
+                <p className="text-sm text-red-400">
+                  Maximum escrow amount is 1,000,000 sats on the free tier.
+                </p>
+              )}
+
               <p className="text-xs text-muted-foreground">
                 {usdValue !== null && !isNaN(usdValue) && usdValue > 0 ? (
                   <>
@@ -755,7 +823,11 @@ export default function NewTaskPage() {
             </div>
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={loading || overCap}
+            >
               {loading ? "Creating..." : "Create Task"}
             </Button>
           </CardFooter>

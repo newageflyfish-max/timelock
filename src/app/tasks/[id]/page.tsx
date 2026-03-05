@@ -26,6 +26,14 @@ import type {
   Dispute,
   ReputationEvent,
 } from "@/lib/types";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ArrowLeft, ExternalLink, AlertTriangle, Gavel, Copy, Check } from "lucide-react";
 
 interface TaskDetail extends Omit<Task, "buyer_agent" | "seller_agent"> {
@@ -53,6 +61,10 @@ export default function TaskDetailPage() {
   const [buyerInvoice, setBuyerInvoice] = useState("");
   const [resolveSellerInvoice, setResolveSellerInvoice] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  // Fund confirmation state
+  const [showFundConfirm, setShowFundConfirm] = useState(false);
+  const [btcPrice, setBtcPrice] = useState<number | null>(null);
 
   // Lightning invoice state
   const [invoice, setInvoice] = useState<string | null>(null);
@@ -119,6 +131,27 @@ export default function TaskDetailPage() {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [polling, task, params.id, loadTask]);
+
+  // Fetch BTC price for USD display in fund confirmation
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchPrice() {
+      try {
+        const res = await fetch("https://mempool.space/api/v1/prices");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && typeof data.USD === "number") {
+          setBtcPrice(data.USD);
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
+    fetchPrice();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const doAction = async (
     action: string,
@@ -373,7 +406,7 @@ export default function TaskDetailPage() {
             {/* CREATED: buyer can fund */}
             {isBuyer && state === "CREATED" && !invoice && (
               <Button
-                onClick={() => doAction("fund")}
+                onClick={() => setShowFundConfirm(true)}
                 disabled={actionLoading}
                 className="w-full"
               >
@@ -688,6 +721,58 @@ export default function TaskDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Fund Confirmation Modal */}
+      <Dialog open={showFundConfirm} onOpenChange={setShowFundConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Escrow Funding</DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-3 pt-2">
+                <p>
+                  You are about to lock{" "}
+                  <span className="font-mono font-semibold text-foreground">
+                    {formatSats(task.amount_sats)}
+                  </span>
+                  {btcPrice !== null && (
+                    <>
+                      {" "}
+                      (≈ $
+                      {(
+                        (Number(task.amount_sats) / 100_000_000) *
+                        btcPrice
+                      ).toFixed(2)}{" "}
+                      USD)
+                    </>
+                  )}{" "}
+                  in escrow.
+                </p>
+                <p>
+                  This cannot be reversed until the task is completed, disputed,
+                  or times out.
+                </p>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowFundConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                setShowFundConfirm(false);
+                doAction("fund");
+              }}
+              disabled={actionLoading}
+            >
+              {actionLoading ? "Generating Invoice..." : "Confirm & Fund"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
