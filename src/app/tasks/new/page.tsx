@@ -79,6 +79,7 @@ function SmartContractAuditFields({
           <option value="" disabled>
             Select chain
           </option>
+          <option value="Bitcoin / Lightning">Bitcoin / Lightning</option>
           <option value="Base">Base</option>
           <option value="Ethereum">Ethereum</option>
           <option value="Solana">Solana</option>
