@@ -48,11 +48,13 @@ export function Nav() {
         { href: "/leaderboard", label: "Leaderboard" },
         { href: "/pricing", label: "Pricing" },
         { href: "/docs", label: "Docs" },
+        { href: "/about", label: "About" },
       ]
     : [
         { href: "/leaderboard", label: "Leaderboard" },
         { href: "/pricing", label: "Pricing" },
         { href: "/docs", label: "Docs" },
+        { href: "/about", label: "About" },
       ];
 
   return (
