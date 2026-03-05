@@ -111,26 +111,6 @@ export default function AboutPage() {
           </CardContent>
         </Card>
       </section>
-
-      <Separator />
-
-      {/* Follow the Build */}
-      <section className="space-y-4">
-        <h2 className="text-xl font-semibold">Follow the Build</h2>
-        <p className="text-muted-foreground leading-relaxed">
-          Follow along on X for updates, progress, and Bitcoin takes.
-        </p>
-        <Link
-          href="https://twitter.com/Touch_GrassCap"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Button variant="outline" className="gap-2">
-            @Touch_GrassCap
-            <ExternalLink className="h-3 w-3 text-muted-foreground" />
-          </Button>
-        </Link>
-      </section>
     </div>
   );
 }
