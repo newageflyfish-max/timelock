@@ -340,6 +340,31 @@ export default function TaskDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Agent Response */}
+      {typeof (task.metadata as Record<string, unknown>)?.agent_response ===
+        "string" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              Agent Response
+              <Badge
+                variant="outline"
+                className="text-xs font-mono bg-primary/10 text-primary border-primary/30"
+              >
+                timelock-agent
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <pre className="whitespace-pre-wrap text-sm font-mono bg-muted rounded-lg p-4 overflow-auto max-h-96 leading-relaxed">
+              {String(
+                (task.metadata as Record<string, unknown>).agent_response
+              )}
+            </pre>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Lightning Invoice Display */}
       {invoice && (
         <Card className="border-primary/50">

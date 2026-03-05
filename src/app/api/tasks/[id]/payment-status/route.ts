@@ -117,6 +117,25 @@ export async function POST(
         `[TASK FUND] ${params.id} → CREATED → FUNDED (payment confirmed)`
       );
 
+      // Trigger timelock-agent for demo auto-delivery
+      if (process.env.AGENT_SECRET) {
+        const appUrl =
+          process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+        fetch(`${appUrl}/api/agent`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-agent-secret": process.env.AGENT_SECRET,
+          },
+          body: JSON.stringify({ task_id: params.id }),
+        }).catch((err) => {
+          console.error(
+            "[AGENT TRIGGER] Failed to trigger agent:",
+            err.message
+          );
+        });
+      }
+
       return NextResponse.json({
         data: {
           paid: true,

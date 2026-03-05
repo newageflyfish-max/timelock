@@ -95,6 +95,62 @@ const SAT_PRESETS: Record<TaskType, SatPreset[]> = {
 
 const MAX_ESCROW_SATS = 1_000_000;
 
+const MIN_DEADLINE_MS = 60 * 60 * 1000; // 1 hour
+
+// ---------------------------------------------------------------------------
+// Deadline presets per task type (in hours)
+// ---------------------------------------------------------------------------
+
+interface DeadlinePreset {
+  hours: number;
+  label: string;
+}
+
+const DEADLINE_PRESETS: Record<TaskType, DeadlinePreset[]> = {
+  agent_task: [
+    { hours: 1, label: "1 hour" },
+    { hours: 4, label: "4 hours" },
+    { hours: 24, label: "24 hours" },
+  ],
+  research_analysis: [
+    { hours: 2, label: "2 hours" },
+    { hours: 8, label: "8 hours" },
+    { hours: 24, label: "24 hours" },
+  ],
+  on_chain_action: [
+    { hours: 4, label: "4 hours" },
+    { hours: 12, label: "12 hours" },
+    { hours: 24, label: "24 hours" },
+  ],
+  custom: [
+    { hours: 24, label: "24 hours" },
+    { hours: 48, label: "48 hours" },
+    { hours: 72, label: "72 hours" },
+  ],
+  api_integration: [
+    { hours: 24, label: "24 hours" },
+    { hours: 48, label: "48 hours" },
+    { hours: 72, label: "72 hours" },
+  ],
+  data_pipeline: [
+    { hours: 48, label: "48 hours" },
+    { hours: 72, label: "72 hours" },
+    { hours: 168, label: "1 week" },
+  ],
+  smart_contract_audit: [
+    { hours: 72, label: "72 hours" },
+    { hours: 168, label: "1 week" },
+    { hours: 336, label: "2 weeks" },
+  ],
+};
+
+function deadlineFromHours(hours: number): string {
+  const d = new Date(Date.now() + hours * 60 * 60 * 1000);
+  // Format as local datetime-local value: YYYY-MM-DDTHH:MM
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function fmtPresetSats(sats: number): string {
   if (sats >= 1_000_000) return `${sats / 1_000_000}M`;
   if (sats >= 1_000) return `${sats / 1_000}k`;
@@ -641,6 +697,10 @@ export default function NewTaskPage() {
     ? parseInt(amountSats, 10) > MAX_ESCROW_SATS
     : false;
 
+  const deadlineTooSoon = deliveryDeadline
+    ? new Date(deliveryDeadline).getTime() - Date.now() < MIN_DEADLINE_MS
+    : false;
+
   // ---- Field setter (resets fields on task type change) ----
 
   const setField = (key: string, value: string) => {
@@ -670,6 +730,15 @@ export default function NewTaskPage() {
       setError("Maximum escrow amount is 1,000,000 sats on the free tier.");
       setLoading(false);
       return;
+    }
+
+    if (deliveryDeadline) {
+      const dlMs = new Date(deliveryDeadline).getTime() - Date.now();
+      if (dlMs < MIN_DEADLINE_MS) {
+        setError("Minimum deadline is 1 hour from now.");
+        setLoading(false);
+        return;
+      }
     }
 
     const description = buildDescription(taskType, structuredFields);
@@ -864,13 +933,35 @@ export default function NewTaskPage() {
                 value={deliveryDeadline}
                 onChange={(e) => setDeliveryDeadline(e.target.value)}
               />
+
+              {/* Deadline preset buttons */}
+              <div className="flex flex-wrap gap-2">
+                {DEADLINE_PRESETS[taskType].map((preset) => (
+                  <button
+                    key={preset.hours}
+                    type="button"
+                    onClick={() =>
+                      setDeliveryDeadline(deadlineFromHours(preset.hours))
+                    }
+                    className="rounded-md border border-input bg-background px-2.5 py-1 text-xs hover:bg-accent hover:text-accent-foreground transition-colors"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              {deadlineTooSoon && (
+                <p className="text-sm text-red-400">
+                  Minimum deadline is 1 hour from now.
+                </p>
+              )}
             </div>
           </CardContent>
           <CardFooter>
             <Button
               type="submit"
               className="w-full"
-              disabled={loading || overCap}
+              disabled={loading || overCap || deadlineTooSoon}
             >
               {loading ? "Creating..." : "Create Task"}
             </Button>
