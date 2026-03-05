@@ -180,10 +180,10 @@ export default function DashboardPage() {
   return (
     <div className="container py-8 space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-start sm:items-center justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex flex-wrap items-center gap-2 mt-1">
             <p className="text-muted-foreground">
               Welcome back,{" "}
               <Link
@@ -205,17 +205,18 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
-        <Link href="/tasks/new">
+        <Link href="/tasks/new" className="shrink-0">
           <Button>
             <Plus className="h-4 w-4 mr-2" />
-            New Task
+            <span className="hidden sm:inline">New Task</span>
+            <span className="sm:hidden">New</span>
           </Button>
         </Link>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
-        <Card className="md:col-span-1 lg:col-span-2">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+        <Card className="col-span-2 md:col-span-1 lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Reputation</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -365,17 +366,17 @@ function TaskRow({ task, role }: { task: Task; role: "buyer" | "seller" }) {
   return (
     <Link href={`/tasks/${task.id}`}>
       <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
-        <CardContent className="flex items-center justify-between py-4 px-6">
-          <div className="flex items-center gap-4">
+        <CardContent className="flex items-center justify-between gap-3 py-4 px-4 sm:px-6">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
             <TaskStateBadge state={task.state as TaskState} />
-            <div>
-              <p className="font-medium text-sm">{task.title}</p>
+            <div className="min-w-0">
+              <p className="font-medium text-sm truncate">{task.title}</p>
               <p className="text-xs text-muted-foreground">
                 {formatDate(task.created_at)} &middot; {role}
               </p>
             </div>
           </div>
-          <div className="text-right">
+          <div className="text-right shrink-0">
             <p className="font-mono text-sm font-medium">
               {formatSats(task.amount_sats)}
             </p>
@@ -477,12 +478,12 @@ function ApiKeysSection({
       <CardContent className="space-y-4">
         {/* New key banner */}
         {newKey && (
-          <div className="bg-green-950/50 border border-green-800 rounded-lg p-4 space-y-2">
+          <div className="bg-green-950/50 border border-green-800 rounded-lg p-3 sm:p-4 space-y-2">
             <p className="text-sm font-medium text-green-400">
               API key created! Copy it now — it won&apos;t be shown again.
             </p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 bg-background/50 rounded px-3 py-2 font-mono text-xs break-all">
+              <code className="flex-1 bg-background/50 rounded px-2 sm:px-3 py-2 font-mono text-[11px] sm:text-xs break-all">
                 {showNewKey ? newKey : "tl_" + "•".repeat(60)}
               </code>
               <Button
@@ -513,7 +514,7 @@ function ApiKeysSection({
         )}
 
         {/* Create key form */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <input
             type="text"
             placeholder="Key name (optional)"
@@ -526,6 +527,7 @@ function ApiKeysSection({
             onClick={handleCreateKey}
             disabled={creatingKey}
             size="sm"
+            className="shrink-0"
           >
             <Plus className="h-4 w-4 mr-1" />
             {creatingKey ? "Creating..." : "Generate Key"}
@@ -541,13 +543,13 @@ function ApiKeysSection({
             {activeKeys.map((key) => (
               <div
                 key={key.id}
-                className="flex items-center justify-between px-3 py-2 rounded-md bg-accent/30"
+                className="flex items-center justify-between gap-2 px-3 py-2 rounded-md bg-accent/30"
               >
-                <div className="flex items-center gap-3">
-                  <Key className="h-3.5 w-3.5 text-green-500" />
-                  <div>
-                    <p className="text-sm font-medium">{key.name}</p>
-                    <p className="text-xs text-muted-foreground">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Key className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{key.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
                       Created {formatDate(key.created_at)}
                       {key.last_used
                         ? ` · Last used ${formatDate(key.last_used)}`

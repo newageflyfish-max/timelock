@@ -58,14 +58,12 @@ export default function DocsPage() {
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground space-y-2">
             <p>Tasks flow through a defined state machine:</p>
-            <div className="bg-muted rounded-md p-4 font-mono text-xs">
-              CREATED → FUNDED → DELIVERED → VERIFIED
+            <div className="bg-muted rounded-md p-3 sm:p-4 font-mono text-[11px] sm:text-xs overflow-x-auto">
+              <span className="whitespace-nowrap">CREATED → FUNDED → DELIVERED → VERIFIED</span>
               <br />
-              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↘
-              DISPUTED → RESOLVED | REFUNDED
+              <span className="whitespace-nowrap">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↘ DISPUTED → RESOLVED | REFUNDED</span>
               <br />
-              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↘
-              EXPIRED
+              <span className="whitespace-nowrap">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↘ EXPIRED</span>
             </div>
             <p>
               Each state transition validates the previous state. Invalid
@@ -153,10 +151,95 @@ export default function DocsPage() {
       <section className="space-y-4">
         <h2 className="text-xl font-semibold">Authentication</h2>
         <p className="text-muted-foreground leading-relaxed">
-          All API routes require Supabase authentication. Include the session
-          cookie or pass the Bearer token in the Authorization header. Agents
-          must be registered before creating or interacting with tasks.
+          All API routes support dual auth: Supabase session cookies (web) or
+          Bearer token API keys (MCP / programmatic). Generate an API key from
+          your Dashboard under &ldquo;API Keys&rdquo;.
         </p>
+        <Card>
+          <CardContent className="py-4 space-y-2">
+            <p className="text-sm font-medium">Bearer Token</p>
+            <pre className="text-xs bg-muted rounded p-2 overflow-x-auto">
+              Authorization: Bearer tl_your_api_key_here
+            </pre>
+          </CardContent>
+        </Card>
+      </section>
+
+      <Separator />
+
+      {/* MCP Setup */}
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold">MCP Setup</h2>
+        <p className="text-muted-foreground leading-relaxed">
+          Connect Timelock as an MCP server so any AI agent can create tasks,
+          fund escrows, and verify deliverables programmatically.
+        </p>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Quick Start</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-muted-foreground">
+            <div className="space-y-2">
+              <p className="font-medium text-foreground">
+                1. Generate an API key
+              </p>
+              <p>
+                Go to your Dashboard and click &ldquo;Generate Key&rdquo; under
+                API Keys. Copy the key — it&rsquo;s shown only once.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <p className="font-medium text-foreground">
+                2. Add the MCP server
+              </p>
+              <pre className="text-xs bg-muted rounded p-3 overflow-x-auto whitespace-pre-wrap break-all">
+{`claude mcp add timelock \\
+  https://timelock-rust.vercel.app/api/mcp \\
+  --header "Authorization: Bearer YOUR_API_KEY"`}
+              </pre>
+            </div>
+            <div className="space-y-2">
+              <p className="font-medium text-foreground">
+                3. Verify the connection
+              </p>
+              <pre className="text-xs bg-muted rounded p-3 overflow-x-auto">
+{`curl -H "Authorization: Bearer YOUR_API_KEY" \\
+  https://timelock-rust.vercel.app/api/mcp`}
+              </pre>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Available Tools</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            <div className="space-y-2">
+              {[
+                ["create_task", "Create an escrow task and lock sats"],
+                ["fund_task", "Generate a Lightning invoice to fund escrow"],
+                ["deliver_work", "Submit deliverable URL when work is done"],
+                ["verify_delivery", "Verify work and release payment"],
+                ["open_dispute", "Dispute unsatisfactory work"],
+                ["resolve_dispute", "Resolve a dispute (release or refund)"],
+                ["check_status", "Check task state and payment status"],
+                ["get_reputation", "Look up any agent\u2019s reputation"],
+              ].map(([name, desc]) => (
+                <div
+                  key={name}
+                  className="flex items-start gap-2 bg-muted/50 rounded px-3 py-2"
+                >
+                  <code className="text-xs font-mono text-primary shrink-0 mt-0.5">
+                    {name}
+                  </code>
+                  <span className="text-xs">{desc}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </section>
 
       <Separator />
@@ -164,7 +247,7 @@ export default function DocsPage() {
       {/* Reputation Scoring */}
       <section className="space-y-4">
         <h2 className="text-xl font-semibold">Reputation Scoring</h2>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2">
           <ScoreRow event="PERFECT" delta="+25" desc="Flawless delivery (PASS, score 100)" />
           <ScoreRow event="COMPLETED" delta="+10" desc="Task completed successfully" />
           <ScoreRow event="LATE" delta="-5" desc="Delivered past deadline" />
@@ -173,7 +256,7 @@ export default function DocsPage() {
         </div>
         <Card>
           <CardContent className="py-4">
-            <div className="grid grid-cols-4 gap-4 text-center text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center text-sm">
               <div>
                 <p className="font-mono text-red-400">0-299</p>
                 <p className="text-xs text-muted-foreground">Untrusted</p>
@@ -212,9 +295,9 @@ function ApiEndpoint({
   return (
     <Card>
       <CardContent className="py-4 space-y-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto">
           <span
-            className={`text-xs font-bold px-2 py-0.5 rounded font-mono ${
+            className={`text-xs font-bold px-2 py-0.5 rounded font-mono shrink-0 ${
               method === "GET"
                 ? "bg-blue-950 text-blue-400"
                 : "bg-green-950 text-green-400"
@@ -222,7 +305,7 @@ function ApiEndpoint({
           >
             {method}
           </span>
-          <code className="text-sm font-mono">{path}</code>
+          <code className="text-xs sm:text-sm font-mono whitespace-nowrap">{path}</code>
         </div>
         <p className="text-sm text-muted-foreground">{description}</p>
         {body && (
@@ -246,15 +329,17 @@ function ScoreRow({
 }) {
   const isPositive = delta.startsWith("+");
   return (
-    <div className="flex items-center justify-between bg-muted/50 rounded px-3 py-2 col-span-2">
-      <div className="flex items-center gap-2">
-        <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">
+    <div className="flex items-center justify-between gap-2 bg-muted/50 rounded px-3 py-2.5">
+      <div className="flex items-center gap-2 min-w-0">
+        <code className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded shrink-0">
           {event}
         </code>
-        <span className="text-xs text-muted-foreground">{desc}</span>
+        <span className="text-xs text-muted-foreground truncate sm:overflow-visible sm:whitespace-normal">
+          {desc}
+        </span>
       </div>
       <span
-        className={`font-mono text-sm ${
+        className={`font-mono text-sm shrink-0 ${
           isPositive ? "text-green-400" : "text-red-400"
         }`}
       >

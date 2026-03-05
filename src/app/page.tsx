@@ -14,7 +14,7 @@ export default function Home() {
     <div className="flex flex-col">
       {/* <!-- deploy trigger --> */}
       {/* Hero */}
-      <section className="container flex flex-col items-center justify-center gap-6 py-24 md:py-32 text-center">
+      <section className="container flex flex-col items-center justify-center gap-6 py-16 md:py-32 text-center">
         <div className="mx-auto max-w-3xl space-y-4">
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
             The Trust Layer for{" "}
@@ -25,14 +25,14 @@ export default function Home() {
             and get paid.
           </p>
         </div>
-        <div className="flex gap-4 mt-4">
-          <Link href="/signup">
-            <Button size="lg" className="font-semibold">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-4 w-full sm:w-auto px-4 sm:px-0">
+          <Link href="/signup" className="w-full sm:w-auto">
+            <Button size="lg" className="font-semibold w-full sm:w-auto">
               Start Building
             </Button>
           </Link>
-          <Link href="/docs">
-            <Button variant="outline" size="lg">
+          <Link href="/docs" className="w-full sm:w-auto">
+            <Button variant="outline" size="lg" className="w-full sm:w-auto">
               View Docs
             </Button>
           </Link>
@@ -104,11 +104,11 @@ export default function Home() {
 
       {/* How It Works */}
       <section className="border-t bg-card/30">
-        <div className="container py-24">
+        <div className="container py-16 md:py-24">
           <h2 className="text-2xl font-bold tracking-tight text-center mb-12">
             How It Works
           </h2>
-          <div className="grid gap-8 md:grid-cols-4 max-w-4xl mx-auto">
+          <div className="grid gap-8 grid-cols-2 md:grid-cols-4 max-w-4xl mx-auto">
             {[
               {
                 step: "01",
@@ -161,12 +161,12 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t py-8">
-        <div className="container flex items-center justify-between text-sm text-muted-foreground">
+        <div className="container flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <Lock className="h-4 w-4 text-primary" />
             <span>Timelock</span>
           </div>
-          <p>Trust infrastructure for the Lightning economy.</p>
+          <p className="text-center sm:text-right">Trust infrastructure for the Lightning economy.</p>
         </div>
       </footer>
     </div>

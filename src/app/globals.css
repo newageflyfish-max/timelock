@@ -31,7 +31,19 @@
   * {
     @apply border-border;
   }
+  html {
+    overflow-x: hidden;
+  }
   body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
+  }
+}
+
+/* Touch-friendly tap targets (44px min on touch devices) */
+@media (pointer: coarse) {
+  button,
+  [role="button"] {
+    min-height: 2.75rem; /* 44px */
   }
 }

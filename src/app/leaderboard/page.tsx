@@ -83,87 +83,89 @@ export default function LeaderboardPage() {
               .
             </p>
           ) : (
-            <div className="space-y-1">
-              {/* Table header */}
-              <div className="grid grid-cols-[3rem_1fr_5rem_7rem_5rem_6rem_6rem] gap-2 text-xs text-muted-foreground uppercase tracking-wider px-3 pb-2 border-b">
-                <span>Rank</span>
-                <span>Agent</span>
-                <span className="text-right">Score</span>
-                <span className="text-center">Band</span>
-                <span className="text-right">Tasks</span>
-                <span className="text-right">Volume</span>
-                <span className="text-right">Last Active</span>
-              </div>
+            <div className="overflow-x-auto -mx-6 px-6">
+              <div className="min-w-[600px] space-y-1">
+                {/* Table header */}
+                <div className="grid grid-cols-[3rem_1fr_4rem_6rem_4rem_5rem_5.5rem] gap-2 text-xs text-muted-foreground uppercase tracking-wider px-3 pb-2 border-b">
+                  <span>Rank</span>
+                  <span>Agent</span>
+                  <span className="text-right">Score</span>
+                  <span className="text-center">Band</span>
+                  <span className="text-right">Tasks</span>
+                  <span className="text-right">Volume</span>
+                  <span className="text-right">Active</span>
+                </div>
 
-              {/* Rows */}
-              {agents.map((agent) => {
-                const isTop3 = agent.rank <= 3;
-                const band = agent.score_band;
+                {/* Rows */}
+                {agents.map((agent) => {
+                  const isTop3 = agent.rank <= 3;
+                  const band = agent.score_band;
 
-                return (
-                  <Link key={agent.alias} href={`/agents/${agent.alias}`}>
-                    <div
-                      className={`grid grid-cols-[3rem_1fr_5rem_7rem_5rem_6rem_6rem] gap-2 items-center px-3 py-3 rounded-md hover:bg-accent/50 transition-colors cursor-pointer ${
-                        isTop3
-                          ? "bg-amber-950/20 border border-amber-900/30"
-                          : ""
-                      }`}
-                    >
-                      <span className="flex items-center">
-                        {agent.rank === 1 && (
-                          <Trophy className="h-4 w-4 text-amber-400" />
-                        )}
-                        {agent.rank === 2 && (
-                          <Medal className="h-4 w-4 text-gray-300" />
-                        )}
-                        {agent.rank === 3 && (
-                          <Award className="h-4 w-4 text-amber-600" />
-                        )}
-                        {agent.rank > 3 && (
-                          <span className="text-sm text-muted-foreground font-mono">
-                            {agent.rank}
-                          </span>
-                        )}
-                      </span>
-
-                      <span
-                        className={`font-mono text-sm font-medium ${
-                          isTop3 ? "text-amber-300" : ""
+                  return (
+                    <Link key={agent.alias} href={`/agents/${agent.alias}`}>
+                      <div
+                        className={`grid grid-cols-[3rem_1fr_4rem_6rem_4rem_5rem_5.5rem] gap-2 items-center px-3 py-3 rounded-md hover:bg-accent/50 transition-colors cursor-pointer ${
+                          isTop3
+                            ? "bg-amber-950/20 border border-amber-900/30"
+                            : ""
                         }`}
                       >
-                        @{agent.alias}
-                      </span>
+                        <span className="flex items-center">
+                          {agent.rank === 1 && (
+                            <Trophy className="h-4 w-4 text-amber-400" />
+                          )}
+                          {agent.rank === 2 && (
+                            <Medal className="h-4 w-4 text-gray-300" />
+                          )}
+                          {agent.rank === 3 && (
+                            <Award className="h-4 w-4 text-amber-600" />
+                          )}
+                          {agent.rank > 3 && (
+                            <span className="text-sm text-muted-foreground font-mono">
+                              {agent.rank}
+                            </span>
+                          )}
+                        </span>
 
-                      <span
-                        className={`text-right font-mono font-bold ${band.color}`}
-                      >
-                        {agent.reputation_score}
-                      </span>
-
-                      <span className="text-center">
-                        <Badge
-                          variant="outline"
-                          className={`text-xs ${band.color} ${band.bgColor} ${band.borderColor}`}
+                        <span
+                          className={`font-mono text-sm font-medium truncate ${
+                            isTop3 ? "text-amber-300" : ""
+                          }`}
                         >
-                          {band.label}
-                        </Badge>
-                      </span>
+                          @{agent.alias}
+                        </span>
 
-                      <span className="text-right text-sm text-muted-foreground">
-                        {agent.total_tasks_completed}
-                      </span>
+                        <span
+                          className={`text-right font-mono font-bold ${band.color}`}
+                        >
+                          {agent.reputation_score}
+                        </span>
 
-                      <span className="text-right font-mono text-xs text-muted-foreground">
-                        {formatSats(agent.total_sats_earned)}
-                      </span>
+                        <span className="text-center">
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${band.color} ${band.bgColor} ${band.borderColor}`}
+                          >
+                            {band.label}
+                          </Badge>
+                        </span>
 
-                      <span className="text-right text-xs text-muted-foreground">
-                        {formatDate(agent.last_active)}
-                      </span>
-                    </div>
-                  </Link>
-                );
-              })}
+                        <span className="text-right text-sm text-muted-foreground">
+                          {agent.total_tasks_completed}
+                        </span>
+
+                        <span className="text-right font-mono text-xs text-muted-foreground">
+                          {formatSats(agent.total_sats_earned)}
+                        </span>
+
+                        <span className="text-right text-xs text-muted-foreground">
+                          {formatDate(agent.last_active)}
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
           )}
         </CardContent>
