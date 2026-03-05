@@ -50,14 +50,47 @@ const selectClass =
 // Sat presets per task type
 // ---------------------------------------------------------------------------
 
-const SAT_PRESETS: Record<TaskType, number[]> = {
-  smart_contract_audit: [250_000, 500_000, 750_000],
-  api_integration: [100_000, 250_000, 500_000],
-  data_pipeline: [100_000, 250_000, 500_000],
-  agent_task: [10_000, 25_000, 50_000],
-  on_chain_action: [5_000, 10_000, 25_000],
-  research_analysis: [25_000, 50_000, 100_000],
-  custom: [10_000, 50_000, 100_000],
+interface SatPreset {
+  sats: number;
+  desc: string;
+}
+
+const SAT_PRESETS: Record<TaskType, SatPreset[]> = {
+  smart_contract_audit: [
+    { sats: 250_000, desc: "Simple audit, 1-2 contracts, basic security review" },
+    { sats: 500_000, desc: "Standard audit, full protocol, written report" },
+    { sats: 750_000, desc: "Complex audit, multiple contracts, detailed findings" },
+  ],
+  api_integration: [
+    { sats: 100_000, desc: "Basic integration, single endpoint, working code" },
+    { sats: 250_000, desc: "Full integration, multiple endpoints, documentation" },
+    { sats: 500_000, desc: "Complex integration, auth + webhooks + error handling" },
+  ],
+  data_pipeline: [
+    { sats: 100_000, desc: "Simple pipeline, single source, basic transform" },
+    { sats: 250_000, desc: "Multi-source pipeline, cleaning + validation included" },
+    { sats: 500_000, desc: "Production pipeline, monitoring + error handling" },
+  ],
+  agent_task: [
+    { sats: 10_000, desc: "Quick task, single action, clear output" },
+    { sats: 25_000, desc: "Medium task, multi-step, structured output" },
+    { sats: 50_000, desc: "Complex task, research + execution + report" },
+  ],
+  on_chain_action: [
+    { sats: 5_000, desc: "Single transaction, straightforward action" },
+    { sats: 10_000, desc: "Multi-step on-chain interaction" },
+    { sats: 25_000, desc: "Complex protocol interaction, verification included" },
+  ],
+  research_analysis: [
+    { sats: 25_000, desc: "Quick research, summary output, 1-2 sources" },
+    { sats: 50_000, desc: "Standard research, structured report, multiple sources" },
+    { sats: 100_000, desc: "Deep research, comprehensive report, on-chain + web" },
+  ],
+  custom: [
+    { sats: 10_000, desc: "Small task, simple deliverable" },
+    { sats: 50_000, desc: "Medium task, clear scope and output" },
+    { sats: 100_000, desc: "Large task, complex deliverable" },
+  ],
 };
 
 const MAX_ESCROW_SATS = 1_000_000;
@@ -758,22 +791,33 @@ export default function NewTaskPage() {
               />
 
               {/* Preset buttons */}
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {SAT_PRESETS[taskType].map((preset) => {
-                  const usd = satsToUsd(preset, btcPrice);
+                  const usd = satsToUsd(preset.sats, btcPrice);
+                  const isActive =
+                    amountSats === preset.sats.toString();
                   return (
                     <button
-                      key={preset}
+                      key={preset.sats}
                       type="button"
-                      onClick={() => setAmountSats(preset.toString())}
-                      className="rounded-md border border-input bg-background px-2.5 py-1 text-xs font-mono hover:bg-accent hover:text-accent-foreground transition-colors"
+                      onClick={() => setAmountSats(preset.sats.toString())}
+                      className={`rounded-md border px-2.5 py-2 text-left transition-colors ${
+                        isActive
+                          ? "border-primary bg-primary/10"
+                          : "border-input bg-background hover:bg-accent hover:text-accent-foreground"
+                      }`}
                     >
-                      {fmtPresetSats(preset)} sats
-                      {usd && (
-                        <span className="text-muted-foreground ml-1">
-                          ≈ ${usd}
-                        </span>
-                      )}
+                      <span className="text-xs font-mono font-medium">
+                        {fmtPresetSats(preset.sats)} sats
+                        {usd && (
+                          <span className="text-muted-foreground ml-1 font-normal">
+                            ≈ ${usd}
+                          </span>
+                        )}
+                      </span>
+                      <span className="block text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                        {preset.desc}
+                      </span>
                     </button>
                   );
                 })}
