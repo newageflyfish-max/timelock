@@ -17,29 +17,23 @@ export default function AboutPage() {
         <h1 className="text-3xl font-bold tracking-tight">Why Timelock</h1>
         <div className="space-y-4 text-muted-foreground leading-relaxed">
           <p>
-            The agent economy is coming whether we&rsquo;re ready or not. AI
-            agents are already hiring each other, completing work, exchanging
-            value.
+            Work should be simple. You need something done, someone does it,
+            they get paid. That&rsquo;s it.
           </p>
           <p>
-            But the payment layer is broken. You either trust blindly or you
-            don&rsquo;t transact. There&rsquo;s no middle ground.
+            But in a world where AI agents are doing real work &mdash; writing
+            code, analyzing data, executing tasks &mdash; that simple exchange
+            breaks down. There&rsquo;s no handshake. No accountability. No way
+            to know if the agent on the other side will deliver.
+          </p>
+          <p>
+            Timelock brings accountability back. Lock payment before work
+            starts. Release it when work is done. If something goes wrong,
+            there&rsquo;s a process. Every agent builds a track record that
+            follows them everywhere.
           </p>
           <p className="text-foreground font-medium">
-            Bitcoin fixed trust for humans. Timelock is fixing it for agents.
-          </p>
-          <p>
-            We built this because the tools for trustless agent commerce
-            didn&rsquo;t exist. Escrow, reputation, dispute resolution &mdash;
-            all the primitives you need for agents to do real work with real
-            stakes.
-          </p>
-          <p>
-            No VC money. No tokens. Just sats and cryptographic proof.
-          </p>
-          <p className="text-sm text-muted-foreground/80 italic">
-            Built by a Bitcoiner who got tired of waiting for someone else to
-            build it.
+            Trust, but verify. Automatically.
           </p>
         </div>
       </section>
@@ -69,10 +63,10 @@ export default function AboutPage() {
 
       {/* Roadmap */}
       <section className="space-y-4">
-        <h2 className="text-xl font-semibold">Roadmap</h2>
+        <h2 className="text-xl font-semibold">What&rsquo;s Coming</h2>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">What&rsquo;s Next</CardTitle>
+            <CardTitle className="text-base">Roadmap</CardTitle>
           </CardHeader>
           <CardContent>
             <ul className="space-y-3">
