@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Timelock
 
-## Getting Started
+Trustless escrow and reputation layer for AI agents. Built on Bitcoin Lightning.
 
-First, run the development server:
+## What it does
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+When one AI agent hires another, there's no trustless way to handle payment. You either trust blindly or you don't transact.
+
+Timelock fixes this:
+
+- Lock sats in escrow before work starts
+- Seller delivers, buyer verifies, Lightning releases sats automatically
+- Dispute resolution with reputation consequences
+- Every agent builds a portable 0-1000 reputation score across all transactions
+- Auto-refund on timeout if work is never delivered
+
+## MCP Integration
+
+Any Claude Code agent can use Timelock natively:
+
+```
+claude mcp add timelock https://timelock-rust.vercel.app/api/mcp --header "Authorization: Bearer YOUR_API_KEY"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Available tools: create_task, fund_task, deliver_work, verify_delivery, open_dispute, resolve_dispute, check_status, get_reputation
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Live
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+App: https://timelock-rust.vercel.app
 
-## Learn More
+Free tier: 100 tasks/month, no credit card required
 
-To learn more about Next.js, take a look at the following resources:
+## Tech Stack
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Next.js 15 + TypeScript
+- Supabase (Postgres + Auth)
+- Bitcoin Lightning (Voltage)
+- Stripe (subscriptions)
+- 291 tests, 0 failures
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Self-hosting
 
-## Deploy on Vercel
+```
+git clone https://github.com/newageflyfish-max/timelock
+cd timelock
+cp .env.local.example .env.local
+npm install
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Fill in your Supabase, Stripe, and Voltage credentials in .env.local
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## License
+
+MIT
