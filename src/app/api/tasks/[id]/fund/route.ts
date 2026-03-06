@@ -9,6 +9,9 @@ import {
 } from "@/lib/lightning";
 import { authenticateRequest } from "@/lib/api-key-auth";
 import { atomicStateTransition } from "@/lib/task-transition";
+import { handleAgentDelivery } from "@/lib/agent";
+
+export const maxDuration = 60; // Vercel Pro — agent needs time for Claude API call
 
 export async function POST(
   request: Request,
@@ -129,21 +132,13 @@ export async function POST(
       score_delta: 0,
     });
 
-    // Fire agent trigger (fire-and-forget)
-    if (process.env.AGENT_SECRET) {
-      console.log(`[AGENT TRIGGER] Firing agent for task ${params.id} after mock FUNDED`);
-      const appUrl =
-        process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-      fetch(`${appUrl}/api/agent`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-agent-secret": process.env.AGENT_SECRET,
-        },
-        body: JSON.stringify({ task_id: params.id }),
-      }).catch((err) => {
-        console.error("[AGENT TRIGGER] Failed:", err.message);
-      });
+    // Call agent directly (no HTTP round-trip)
+    console.log(`[FUND MOCK] Calling handleAgentDelivery inline for task ${params.id}`);
+    try {
+      const agentResult = await handleAgentDelivery(params.id);
+      console.log(`[FUND MOCK] Agent result:`, agentResult);
+    } catch (err) {
+      console.error("[FUND MOCK] Agent error (non-fatal):", (err as Error).message);
     }
 
     return NextResponse.json({
