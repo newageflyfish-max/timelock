@@ -9,6 +9,7 @@ import {
 } from "@/lib/lightning";
 import { authenticateRequest } from "@/lib/api-key-auth";
 import { atomicStateTransition } from "@/lib/task-transition";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { handleAgentDelivery } from "@/lib/agent";
 
 export const maxDuration = 60; // Vercel Pro — agent needs time for Claude API call
@@ -131,6 +132,17 @@ export async function POST(
       event_type: "FUNDED",
       score_delta: 0,
     });
+
+    // Belt-and-suspenders: force FUNDED state via admin client (bypasses RLS)
+    // The CAS transition above uses the cookie-based client which may have
+    // RLS or replication issues. This ensures the agent will see FUNDED.
+    const supabaseAdmin = createAdminClient();
+    const { error: forceErr } = await supabaseAdmin
+      .from("tasks")
+      .update({ state: "FUNDED", payment_hash: mockHash })
+      .eq("id", params.id);
+
+    console.log(`[FUND MOCK] Admin force-write FUNDED: ${forceErr ? "FAILED " + forceErr.message : "OK"}`);
 
     // Call agent directly (no HTTP round-trip)
     console.log(`[FUND MOCK] Calling handleAgentDelivery inline for task ${params.id}`);

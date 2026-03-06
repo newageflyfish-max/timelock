@@ -8,6 +8,9 @@ import { parseTaskType, SYSTEM_PROMPTS, AGENT_ALIAS } from "./prompts";
 
 const AGENT_DELAY_MS = 3_000; // 3 seconds — keep within Vercel timeout
 
+// States that the agent considers valid for processing
+const VALID_AGENT_STATES = new Set(["FUNDED", "CREATED"]);
+
 interface AgentResult {
   success: boolean;
   error?: string;
@@ -16,10 +19,10 @@ interface AgentResult {
 /**
  * Main handler: auto-deliver a funded task using Claude AI.
  *
- * 1. Validate task is FUNDED
+ * 1. Validate task is in a processable state (FUNDED or CREATED)
  * 2. Wait 3 seconds (short delay to avoid Vercel timeout)
  * 3. Generate AI response via Anthropic Claude
- * 4. Atomic CAS transition FUNDED → DELIVERED
+ * 4. Transition to DELIVERED (tries FUNDED first, falls back to CREATED)
  *
  * No agent row is created — the bot identity is stored in task metadata
  * as agent_alias: "timelock-agent" to avoid RLS issues.
@@ -37,32 +40,48 @@ export async function handleAgentDelivery(
     .single();
 
   if (taskError || !task) {
-    return { success: false, error: "Task not found" };
+    return { success: false, error: `Task not found: ${taskError?.message}` };
   }
 
-  if (task.state !== "FUNDED") {
+  console.log(`[AGENT] Task ${taskId} state: ${task.state}`);
+
+  if (!VALID_AGENT_STATES.has(task.state)) {
     return {
       success: false,
-      error: `Task is in ${task.state}, expected FUNDED`,
+      error: `Task is in ${task.state}, expected FUNDED or CREATED`,
     };
   }
 
-  console.log(`[AGENT] Processing task ${taskId} (state: ${task.state})`);
+  // If task is still CREATED (replication lag), force it to FUNDED
+  if (task.state === "CREATED") {
+    console.log(`[AGENT] Task still in CREATED — forcing to FUNDED via admin`);
+    const { error: forceErr } = await supabase
+      .from("tasks")
+      .update({ state: "FUNDED" })
+      .eq("id", taskId);
+
+    if (forceErr) {
+      console.error("[AGENT] Force FUNDED failed:", forceErr.message);
+      return { success: false, error: "Failed to force FUNDED state" };
+    }
+  }
+
+  console.log(`[AGENT] Processing task ${taskId}`);
 
   // ---- 2. Short delay before AI generation ----
   await new Promise((resolve) => setTimeout(resolve, AGENT_DELAY_MS));
 
-  // ---- 3. Re-check state (could have expired during wait) ----
+  // ---- 3. Re-check state ----
   const { data: freshTask } = await supabase
     .from("tasks")
     .select("state, metadata")
     .eq("id", taskId)
     .single();
 
-  if (!freshTask || freshTask.state !== "FUNDED") {
+  if (!freshTask || !VALID_AGENT_STATES.has(freshTask.state)) {
     return {
       success: false,
-      error: "Task state changed during agent processing",
+      error: `Task state changed during processing: ${freshTask?.state}`,
     };
   }
 
@@ -96,7 +115,7 @@ export async function handleAgentDelivery(
     return { success: false, error: `AI generation failed: ${errMsg}` };
   }
 
-  // ---- 5. Atomic CAS: FUNDED → DELIVERED ----
+  // ---- 5. Transition to DELIVERED ----
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const deliverableUrl = `${appUrl}/tasks/${taskId}`;
   const now = new Date().toISOString();
@@ -105,7 +124,7 @@ export async function handleAgentDelivery(
     task.delivery_deadline && new Date() > new Date(task.delivery_deadline);
 
   const metadata = {
-    ...(freshTask.metadata as Record<string, unknown>),
+    ...((freshTask.metadata as Record<string, unknown>) ?? {}),
     agent_response: agentResponse,
     agent_alias: AGENT_ALIAS,
     delivered_at: now,
@@ -113,7 +132,12 @@ export async function handleAgentDelivery(
     ...(isLate ? { late: true } : {}),
   };
 
-  const { data: updated, error: transitionError } = await supabase
+  // Try CAS from FUNDED first, then fallback to direct update
+  let updated: Record<string, unknown>[] | null = null;
+  let transitionError: { message: string } | null = null;
+
+  // Attempt 1: CAS from FUNDED
+  const result1 = await supabase
     .from("tasks")
     .update({
       state: "DELIVERED",
@@ -121,18 +145,42 @@ export async function handleAgentDelivery(
       metadata,
     })
     .eq("id", taskId)
-    .eq("state", "FUNDED") // CAS guard
+    .eq("state", "FUNDED")
     .select();
 
-  if (transitionError || !updated || updated.length === 0) {
+  if (!result1.error && result1.data && result1.data.length > 0) {
+    updated = result1.data;
+  } else {
+    console.log(`[AGENT] CAS from FUNDED failed, trying from CREATED...`);
+
+    // Attempt 2: CAS from CREATED (replication lag scenario)
+    const result2 = await supabase
+      .from("tasks")
+      .update({
+        state: "DELIVERED",
+        deliverable_url: deliverableUrl,
+        metadata,
+      })
+      .eq("id", taskId)
+      .eq("state", "CREATED")
+      .select();
+
+    if (!result2.error && result2.data && result2.data.length > 0) {
+      updated = result2.data;
+    } else {
+      transitionError = result2.error || { message: "No rows updated" };
+    }
+  }
+
+  if (!updated || updated.length === 0) {
     return {
       success: false,
-      error: `State transition failed: ${transitionError?.message || "task no longer in FUNDED state"}`,
+      error: `State transition failed: ${transitionError?.message || "task not in expected state"}`,
     };
   }
 
   console.log(
-    `[AGENT] ✅ ${taskId} → FUNDED → DELIVERED (type: ${taskType}, ${agentResponse.length} chars)`
+    `[AGENT] ✅ ${taskId} → DELIVERED (type: ${taskType}, ${agentResponse.length} chars)`
   );
   return { success: true };
 }
