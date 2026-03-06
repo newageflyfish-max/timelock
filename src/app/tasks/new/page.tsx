@@ -95,7 +95,7 @@ const SAT_PRESETS: Record<TaskType, SatPreset[]> = {
 
 const MAX_ESCROW_SATS = 1_000_000;
 
-const MIN_DEADLINE_MS = 60 * 60 * 1000; // 1 hour
+const MIN_DEADLINE_MS = 55 * 60 * 1000; // 55 minutes (5-min buffer so 1h preset always passes)
 
 // ---------------------------------------------------------------------------
 // Deadline presets per task type (in hours)
