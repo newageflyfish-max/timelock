@@ -101,8 +101,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // Validate delivery_deadline must be at least 55 minutes from now
-  // (5-min buffer so the "1 hour" preset always passes despite rounding)
+  // Validate delivery_deadline must be at least 30 minutes from now
   if (delivery_deadline) {
     const deadlineDate = new Date(delivery_deadline);
     if (isNaN(deadlineDate.getTime())) {
@@ -111,10 +110,10 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    const minDeadline = new Date(Date.now() + 55 * 60 * 1000); // 55 minutes from now
+    const minDeadline = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes from now
     if (deadlineDate < minDeadline) {
       return NextResponse.json(
-        { data: null, error: "Minimum deadline is 1 hour from now" },
+        { data: null, error: "Minimum deadline is 30 minutes from now" },
         { status: 400 }
       );
     }

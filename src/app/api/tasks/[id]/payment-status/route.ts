@@ -10,13 +10,18 @@ export async function POST(
   request: Request,
   { params }: { params: { id: string } }
 ) {
+  console.log(`[PAYMENT-STATUS] Called for task ${params.id}`);
+
   const auth = await authenticateRequest(request);
   if (!auth) {
+    console.log("[PAYMENT-STATUS] Auth failed — returning 401");
     return NextResponse.json(
       { data: null, error: "Unauthorized" },
       { status: 401 }
     );
   }
+
+  console.log(`[PAYMENT-STATUS] Authenticated as agent ${auth.agent.id} (${auth.method})`);
 
   const { agent } = auth;
   const supabase = createClient();
@@ -28,11 +33,14 @@ export async function POST(
     .single();
 
   if (taskError || !task) {
+    console.log("[PAYMENT-STATUS] Task not found:", taskError?.message);
     return NextResponse.json(
       { data: null, error: "Task not found" },
       { status: 404 }
     );
   }
+
+  console.log(`[PAYMENT-STATUS] Task state: ${task.state}, payment_hash: ${task.payment_hash ? "yes" : "no"}`);
 
   // Restrict to task participants only
   if (
@@ -55,6 +63,7 @@ export async function POST(
   const invoiceExpiry = (task.metadata as Record<string, unknown>)
     ?.invoice_expiry as string | undefined;
   if (invoiceExpiry && new Date(invoiceExpiry) < new Date()) {
+    console.log("[PAYMENT-STATUS] Invoice expired");
     return NextResponse.json(
       {
         data: { paid: false, expired: true },
@@ -64,17 +73,20 @@ export async function POST(
     );
   }
 
-  // Check payment status with Voltage
+  // Check payment status with Voltage (or mock)
   let paymentStatus: Awaited<ReturnType<typeof checkInvoicePaid>>;
   try {
     paymentStatus = await checkInvoicePaid(task.payment_hash);
+    console.log(`[PAYMENT-STATUS] checkInvoicePaid result: paid=${paymentStatus.paid}`);
   } catch (err) {
     if (err instanceof VoltageError) {
+      console.log("[PAYMENT-STATUS] VoltageError:", err.message);
       return NextResponse.json(
         { data: null, error: "Lightning service unavailable" },
         { status: 503 }
       );
     }
+    console.log("[PAYMENT-STATUS] Unknown error:", (err as Error).message);
     return NextResponse.json(
       { data: null, error: "Failed to check payment status" },
       { status: 500 }
@@ -84,16 +96,19 @@ export async function POST(
   // If paid and task still in CREATED → move to FUNDED
   if (paymentStatus.paid) {
     const currentState = task.state as TaskState;
+    console.log(`[PAYMENT-STATUS] Payment confirmed. Current state: ${currentState}`);
 
     if (canTransition(currentState, "FUNDED")) {
       const now = new Date().toISOString();
 
       // Update escrow to HELD
-      await supabase
+      const { error: escrowErr } = await supabase
         .from("escrow_holds")
         .update({ state: "HELD", held_at: now })
         .eq("task_id", params.id)
         .eq("state", "PENDING");
+
+      console.log(`[PAYMENT-STATUS] Escrow update: ${escrowErr ? "FAILED " + escrowErr.message : "OK"}`);
 
       // CRITICAL-1: Atomic CAS transition CREATED → FUNDED
       const transition = await atomicStateTransition(
@@ -104,7 +119,7 @@ export async function POST(
 
       if (!transition.success) {
         console.log(
-          "[PAYMENT-STATUS] State conflict:",
+          "[PAYMENT-STATUS] CAS transition failed:",
           transition.error
         );
         return NextResponse.json(
@@ -114,7 +129,7 @@ export async function POST(
       }
 
       console.log(
-        `[TASK FUND] ${params.id} → CREATED → FUNDED (payment confirmed)`
+        `[PAYMENT-STATUS] ✅ ${params.id} → CREATED → FUNDED (payment confirmed)`
       );
 
       // Trigger timelock-agent for demo auto-delivery
@@ -142,6 +157,7 @@ export async function POST(
       return NextResponse.json({
         data: {
           paid: true,
+          funded: true,
           task: transition.task,
           settledAt: paymentStatus.settledAt?.toISOString(),
         },
@@ -149,13 +165,15 @@ export async function POST(
       });
     }
 
-    // Already funded
+    // Already funded or in later state
+    console.log(`[PAYMENT-STATUS] Already past CREATED — returning paid with current state ${currentState}`);
     return NextResponse.json({
-      data: { paid: true, task, settledAt: paymentStatus.settledAt?.toISOString() },
+      data: { paid: true, funded: true, task, settledAt: paymentStatus.settledAt?.toISOString() },
       error: null,
     });
   }
 
+  console.log("[PAYMENT-STATUS] Not paid yet");
   return NextResponse.json({
     data: { paid: false },
     error: null,

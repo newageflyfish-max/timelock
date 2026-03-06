@@ -76,9 +76,12 @@ export default function TaskDetailPage() {
   const supabase = createClient();
 
   const loadTask = useCallback(async () => {
-    const res = await fetch(`/api/tasks/${params.id}`);
+    const res = await fetch(`/api/tasks/${params.id}?t=${Date.now()}`, {
+      cache: "no-store",
+    });
     if (!res.ok) return;
     const json = await res.json();
+    console.log("[TASK DETAIL] loadTask fresh state:", json.data?.state);
     setTask(json.data as TaskDetail);
   }, [params.id]);
 
@@ -97,13 +100,16 @@ export default function TaskDetailPage() {
         if (agent) setAgentId(agent.id);
       }
 
-      const res = await fetch(`/api/tasks/${params.id}`);
+      const res = await fetch(`/api/tasks/${params.id}?t=${Date.now()}`, {
+        cache: "no-store",
+      });
       if (!res.ok) {
         router.push("/dashboard");
         return;
       }
       const json = await res.json();
       const loaded = json.data as TaskDetail;
+      console.log("[TASK DETAIL] Initial load — state:", loaded.state, "escrow:", loaded.escrow?.state);
       setTask(loaded);
 
       // Restore invoice display + polling if task has a pending escrow
@@ -134,18 +140,34 @@ export default function TaskDetailPage() {
   useEffect(() => {
     if (!polling || !task) return;
 
-    pollRef.current = setInterval(async () => {
-      const res = await fetch(`/api/tasks/${params.id}/payment-status`, {
-        method: "POST",
-      });
-      const json = await res.json();
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/tasks/${params.id}/payment-status`, {
+          method: "POST",
+          cache: "no-store",
+        });
+        const json = await res.json();
+        console.log("[POLL] payment-status response:", json);
 
-      if (json.data?.paid) {
-        setPolling(false);
-        setInvoice(null);
-        await loadTask();
+        if (json.data?.paid) {
+          console.log("[POLL] ✅ Payment confirmed — updating UI to FUNDED");
+          // Immediately update local state
+          setPolling(false);
+          setInvoice(null);
+          setTask((prev) =>
+            prev ? { ...prev, state: "FUNDED" as TaskState } : prev
+          );
+          // Then do a full refresh for complete data
+          await loadTask();
+        }
+      } catch (err) {
+        console.error("[POLL] Error:", err);
       }
-    }, 10000);
+    };
+
+    // Fire immediately on first poll cycle, then every 5s
+    poll();
+    pollRef.current = setInterval(poll, 5000);
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
@@ -217,12 +239,20 @@ export default function TaskDetailPage() {
     setActionLoading(true);
     const res = await fetch(`/api/tasks/${params.id}/payment-status`, {
       method: "POST",
+      cache: "no-store",
     });
     const json = await res.json();
+    console.log("[CHECK NOW] payment-status response:", json);
 
     if (json.data?.paid) {
+      console.log("[CHECK NOW] ✅ Payment confirmed — updating UI to FUNDED");
       setPolling(false);
       setInvoice(null);
+      // Immediately update local state
+      setTask((prev) =>
+        prev ? { ...prev, state: "FUNDED" as TaskState } : prev
+      );
+      // Then full refresh
       await loadTask();
     } else if (json.error) {
       setError(json.error);

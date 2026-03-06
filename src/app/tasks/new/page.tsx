@@ -95,7 +95,7 @@ const SAT_PRESETS: Record<TaskType, SatPreset[]> = {
 
 const MAX_ESCROW_SATS = 1_000_000;
 
-const MIN_DEADLINE_MS = 55 * 60 * 1000; // 55 minutes (5-min buffer so 1h preset always passes)
+const MIN_DEADLINE_MS = 30 * 60 * 1000; // 30 minutes
 
 // ---------------------------------------------------------------------------
 // Deadline presets per task type (in hours)
@@ -145,12 +145,9 @@ const DEADLINE_PRESETS: Record<TaskType, DeadlinePreset[]> = {
 };
 
 function deadlineFromHours(hours: number): string {
-  const targetMs = Date.now() + hours * 60 * 60 * 1000;
-  // Round UP to the next whole minute so truncating seconds never
-  // puts us below the minimum-deadline threshold.
-  const d = new Date(Math.ceil(targetMs / 60_000) * 60_000);
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const target = new Date(Date.now() + hours * 60 * 60 * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}T${pad(target.getHours())}:${pad(target.getMinutes())}`;
 }
 
 function fmtPresetSats(sats: number): string {
@@ -701,16 +698,14 @@ export default function NewTaskPage() {
 
   const deadlineTooSoon = (() => {
     if (!deliveryDeadline) return false;
-    const deadlineMs = new Date(deliveryDeadline).getTime();
+    const parsedMs = new Date(deliveryDeadline).getTime();
     const nowMs = Date.now();
-    const diffMs = deadlineMs - nowMs;
+    const diffMs = parsedMs - nowMs;
     console.log("[DEADLINE DEBUG]", {
-      raw: deliveryDeadline,
-      parsed: new Date(deliveryDeadline).toISOString(),
-      now: new Date(nowMs).toISOString(),
-      diffMinutes: (diffMs / 60_000).toFixed(1),
-      minRequired: MIN_DEADLINE_MS / 60_000,
-      tooSoon: diffMs < MIN_DEADLINE_MS,
+      inputValue: deliveryDeadline,
+      parsedTimestamp: parsedMs,
+      currentTimestamp: nowMs,
+      differenceMinutes: +(diffMs / 60_000).toFixed(2),
     });
     return diffMs < MIN_DEADLINE_MS;
   })();
@@ -749,7 +744,7 @@ export default function NewTaskPage() {
     if (deliveryDeadline) {
       const dlMs = new Date(deliveryDeadline).getTime() - Date.now();
       if (dlMs < MIN_DEADLINE_MS) {
-        setError("Minimum deadline is 1 hour from now.");
+        setError("Minimum deadline is 30 minutes from now.");
         setLoading(false);
         return;
       }
@@ -966,7 +961,7 @@ export default function NewTaskPage() {
 
               {deadlineTooSoon && (
                 <p className="text-sm text-red-400">
-                  Minimum deadline is 1 hour from now.
+                  Minimum deadline is 30 minutes from now.
                 </p>
               )}
             </div>
