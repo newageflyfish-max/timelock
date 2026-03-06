@@ -6,7 +6,7 @@ import { parseTaskType, SYSTEM_PROMPTS, AGENT_ALIAS } from "./prompts";
 // Timelock demo agent — auto-delivers tasks using Claude
 // ---------------------------------------------------------------------------
 
-const AGENT_DELAY_MS = 30_000; // 30 seconds — feels realistic
+const AGENT_DELAY_MS = 3_000; // 3 seconds — keep within Vercel timeout
 
 interface AgentResult {
   success: boolean;
@@ -69,7 +69,7 @@ async function getOrCreateAgent(
  *
  * 1. Validate task is FUNDED
  * 2. Find/create timelock-agent, assign as seller if needed
- * 3. Wait 30 seconds (realistic delay)
+ * 3. Wait 3 seconds (short delay to avoid Vercel timeout)
  * 4. Generate AI response via Anthropic Claude
  * 5. Atomic CAS transition FUNDED → DELIVERED
  */
@@ -118,7 +118,7 @@ export async function handleAgentDelivery(
     console.log(`[AGENT] Assigned timelock-agent as seller for task ${taskId}`);
   }
 
-  // ---- 4. Wait 30 seconds (realistic delay) ----
+  // ---- 4. Short delay before AI generation ----
   await new Promise((resolve) => setTimeout(resolve, AGENT_DELAY_MS));
 
   // ---- 5. Re-check state (could have expired during wait) ----
