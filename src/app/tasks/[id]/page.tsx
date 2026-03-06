@@ -216,11 +216,24 @@ export default function TaskDetailPage() {
       return;
     }
 
-    // Handle fund response — show invoice
-    if (action === "fund" && json.data?.invoice) {
-      setInvoice(json.data.invoice);
-      setInvoiceExpiry(json.data.expiryAt || null);
-      setPolling(true);
+    // Handle fund response
+    if (action === "fund") {
+      if (json.data?.mock) {
+        // Mock mode: task is already FUNDED on the server — update UI instantly
+        console.log("[FUND] ✅ Mock mode — task instantly funded");
+        setTask((prev) =>
+          prev ? { ...prev, state: "FUNDED" as TaskState } : prev
+        );
+        await loadTask();
+        setActionLoading(false);
+        return;
+      }
+      // Live mode: show invoice and start polling
+      if (json.data?.invoice) {
+        setInvoice(json.data.invoice);
+        setInvoiceExpiry(json.data.expiryAt || null);
+        setPolling(true);
+      }
     }
 
     // Reload full task

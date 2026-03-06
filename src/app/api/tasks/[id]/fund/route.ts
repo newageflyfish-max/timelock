@@ -2,8 +2,13 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { validateTransition } from "@/lib/types";
 import type { TaskState } from "@/lib/types";
-import { createHoldInvoice, VoltageError } from "@/lib/lightning";
+import {
+  createHoldInvoice,
+  VoltageError,
+  isLightningEnabled,
+} from "@/lib/lightning";
 import { authenticateRequest } from "@/lib/api-key-auth";
+import { atomicStateTransition } from "@/lib/task-transition";
 
 export async function POST(
   request: Request,
@@ -68,7 +73,92 @@ export async function POST(
     );
   }
 
-  // Generate Lightning invoice via Voltage Cloud
+  // ---------------------------------------------------------------
+  // MOCK MODE: When Lightning is disabled, skip invoice entirely
+  // and immediately transition to FUNDED.
+  // ---------------------------------------------------------------
+  if (!isLightningEnabled()) {
+    console.log(`[FUND MOCK] Lightning disabled — instant fund for task ${params.id}`);
+
+    const now = new Date().toISOString();
+    const mockHash = params.id.replace(/-/g, "").slice(0, 32).padEnd(32, "0");
+
+    // Create escrow hold as HELD (skipping PENDING entirely)
+    const { error: escrowError } = await supabase
+      .from("escrow_holds")
+      .insert({
+        task_id: params.id,
+        amount_sats: task.amount_sats,
+        hold_invoice: `lnbc${task.amount_sats}mock${mockHash.slice(0, 16)}`,
+        state: "HELD",
+        held_at: now,
+        created_at: now,
+      });
+
+    if (escrowError) {
+      console.log("[FUND MOCK] Escrow creation error:", escrowError.message);
+      return NextResponse.json(
+        { data: null, error: "Failed to create escrow hold" },
+        { status: 500 }
+      );
+    }
+
+    // Atomic CAS transition CREATED → FUNDED
+    const transition = await atomicStateTransition(
+      params.id,
+      "CREATED",
+      "FUNDED",
+      { payment_hash: mockHash }
+    );
+
+    if (!transition.success) {
+      console.log("[FUND MOCK] CAS transition failed:", transition.error);
+      return NextResponse.json(
+        { data: null, error: transition.error },
+        { status: 409 }
+      );
+    }
+
+    console.log(`[FUND MOCK] ✅ ${params.id} → CREATED → FUNDED (instant mock)`);
+
+    // Log FUNDED reputation event
+    await supabase.from("reputation_events").insert({
+      agent_id: agent.id,
+      task_id: params.id,
+      event_type: "FUNDED",
+      score_delta: 0,
+    });
+
+    // Fire agent trigger (fire-and-forget)
+    if (process.env.AGENT_SECRET) {
+      console.log(`[AGENT TRIGGER] Firing agent for task ${params.id} after mock FUNDED`);
+      const appUrl =
+        process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      fetch(`${appUrl}/api/agent`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-agent-secret": process.env.AGENT_SECRET,
+        },
+        body: JSON.stringify({ task_id: params.id }),
+      }).catch((err) => {
+        console.error("[AGENT TRIGGER] Failed:", err.message);
+      });
+    }
+
+    return NextResponse.json({
+      data: {
+        task: transition.task,
+        mock: true,
+        funded: true,
+      },
+      error: null,
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // LIVE MODE: Generate a real Lightning invoice and wait for payment
+  // ---------------------------------------------------------------
   let invoiceData: Awaited<ReturnType<typeof createHoldInvoice>>;
   try {
     invoiceData = await createHoldInvoice(task.amount_sats, params.id);
