@@ -32,6 +32,7 @@ async function getOrCreateAgent(
   if (existing) return existing.id;
 
   // Insert agent row directly — service role bypasses RLS & FK checks
+  console.log("[AGENT] Upserting agent row with admin client (service role)");
   const { data: newAgent, error: agentError } = await supabase
     .from("agents")
     .upsert(
