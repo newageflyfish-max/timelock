@@ -99,8 +99,8 @@ function mockCreateInvoice(
 }
 
 function mockCheckInvoice(): CheckInvoiceResponse {
-  console.log("[LIGHTNING MOCK] Checking invoice — returning unpaid");
-  return { paid: false };
+  console.log("[LIGHTNING MOCK] Checking invoice — auto-confirming payment");
+  return { paid: true, settledAt: new Date() };
 }
 
 function mockPayInvoice(
