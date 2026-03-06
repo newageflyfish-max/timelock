@@ -103,7 +103,27 @@ export default function TaskDetailPage() {
         return;
       }
       const json = await res.json();
-      setTask(json.data as TaskDetail);
+      const loaded = json.data as TaskDetail;
+      setTask(loaded);
+
+      // Restore invoice display + polling if task has a pending escrow
+      // (handles page refresh after "Fund Escrow" but before payment confirmed)
+      if (
+        loaded.state === "CREATED" &&
+        loaded.payment_hash &&
+        loaded.escrow?.hold_invoice &&
+        loaded.escrow.state === "PENDING"
+      ) {
+        console.log(
+          "[TASK DETAIL] Restoring pending invoice from escrow, resuming poll"
+        );
+        setInvoice(loaded.escrow.hold_invoice);
+        const expiry = (loaded.metadata as Record<string, unknown>)
+          ?.invoice_expiry as string | undefined;
+        if (expiry) setInvoiceExpiry(expiry);
+        setPolling(true);
+      }
+
       setLoading(false);
     }
 

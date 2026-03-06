@@ -119,6 +119,9 @@ export async function POST(
 
       // Trigger timelock-agent for demo auto-delivery
       if (process.env.AGENT_SECRET) {
+        console.log(
+          `[AGENT TRIGGER] Firing agent for task ${params.id} after FUNDED transition`
+        );
         const appUrl =
           process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
         fetch(`${appUrl}/api/agent`, {
