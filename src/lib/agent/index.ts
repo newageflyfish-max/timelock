@@ -13,10 +13,11 @@ interface AgentResult {
   error?: string;
 }
 
+const AGENT_ID = "00000000-0000-0000-0000-000000000001";
+
 /**
- * Find the "timelock-agent" row, or auto-create it (auth user + agent).
- * Uses the admin client so the FK on agents.user_id is satisfied by
- * creating a real auth.users entry via `auth.admin.createUser()`.
+ * Find the "timelock-agent" row, or auto-create it directly in the
+ * agents table using the service-role client (no auth user needed).
  */
 async function getOrCreateAgent(
   supabase: ReturnType<typeof createAdminClient>
@@ -25,33 +26,30 @@ async function getOrCreateAgent(
   const { data: existing } = await supabase
     .from("agents")
     .select("id")
-    .eq("alias", AGENT_ALIAS)
+    .eq("id", AGENT_ID)
     .single();
 
   if (existing) return existing.id;
 
-  // Create a dedicated auth user for the agent
-  const { data: authData, error: authError } =
-    await supabase.auth.admin.createUser({
-      email: "timelock-agent@timelock.internal",
-      email_confirm: true,
-      user_metadata: { is_bot: true },
-    });
-
-  if (authError || !authData.user) {
-    console.error("[AGENT] Failed to create auth user:", authError?.message);
-    return null;
-  }
-
-  // Insert agent row
+  // Insert agent row directly — service role bypasses RLS & FK checks
   const { data: newAgent, error: agentError } = await supabase
     .from("agents")
-    .insert({
-      user_id: authData.user.id,
-      alias: AGENT_ALIAS,
-      pubkey: null,
-      metadata: { is_bot: true, description: "Timelock demo agent" },
-    })
+    .upsert(
+      {
+        id: AGENT_ID,
+        user_id: AGENT_ID,
+        alias: AGENT_ALIAS,
+        pubkey: null,
+        reputation_score: 1000,
+        total_tasks_completed: 0,
+        total_tasks_disputed: 0,
+        total_sats_earned: 0,
+        total_sats_paid: 0,
+        metadata: { is_bot: true, description: "Timelock demo agent" },
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: "id" }
+    )
     .select("id")
     .single();
 
