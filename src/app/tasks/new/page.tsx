@@ -145,8 +145,10 @@ const DEADLINE_PRESETS: Record<TaskType, DeadlinePreset[]> = {
 };
 
 function deadlineFromHours(hours: number): string {
-  const d = new Date(Date.now() + hours * 60 * 60 * 1000);
-  // Format as local datetime-local value: YYYY-MM-DDTHH:MM
+  const targetMs = Date.now() + hours * 60 * 60 * 1000;
+  // Round UP to the next whole minute so truncating seconds never
+  // puts us below the minimum-deadline threshold.
+  const d = new Date(Math.ceil(targetMs / 60_000) * 60_000);
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
@@ -697,9 +699,21 @@ export default function NewTaskPage() {
     ? parseInt(amountSats, 10) > MAX_ESCROW_SATS
     : false;
 
-  const deadlineTooSoon = deliveryDeadline
-    ? new Date(deliveryDeadline).getTime() - Date.now() < MIN_DEADLINE_MS
-    : false;
+  const deadlineTooSoon = (() => {
+    if (!deliveryDeadline) return false;
+    const deadlineMs = new Date(deliveryDeadline).getTime();
+    const nowMs = Date.now();
+    const diffMs = deadlineMs - nowMs;
+    console.log("[DEADLINE DEBUG]", {
+      raw: deliveryDeadline,
+      parsed: new Date(deliveryDeadline).toISOString(),
+      now: new Date(nowMs).toISOString(),
+      diffMinutes: (diffMs / 60_000).toFixed(1),
+      minRequired: MIN_DEADLINE_MS / 60_000,
+      tooSoon: diffMs < MIN_DEADLINE_MS,
+    });
+    return diffMs < MIN_DEADLINE_MS;
+  })();
 
   // ---- Field setter (resets fields on task type change) ----
 
