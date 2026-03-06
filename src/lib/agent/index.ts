@@ -13,64 +13,16 @@ interface AgentResult {
   error?: string;
 }
 
-const AGENT_ID = "00000000-0000-0000-0000-000000000001";
-
-/**
- * Find the "timelock-agent" row, or auto-create it directly in the
- * agents table using the service-role client (no auth user needed).
- */
-async function getOrCreateAgent(
-  supabase: ReturnType<typeof createAdminClient>
-): Promise<string | null> {
-  // Try to find existing agent
-  const { data: existing } = await supabase
-    .from("agents")
-    .select("id")
-    .eq("id", AGENT_ID)
-    .single();
-
-  if (existing) return existing.id;
-
-  // Insert agent row directly — service role bypasses RLS & FK checks
-  console.log("[AGENT] Upserting agent row with admin client (service role)");
-  const { data: newAgent, error: agentError } = await supabase
-    .from("agents")
-    .upsert(
-      {
-        id: AGENT_ID,
-        user_id: AGENT_ID,
-        alias: AGENT_ALIAS,
-        pubkey: null,
-        reputation_score: 1000,
-        total_tasks_completed: 0,
-        total_tasks_disputed: 0,
-        total_sats_earned: 0,
-        total_sats_paid: 0,
-        metadata: { is_bot: true, description: "Timelock demo agent" },
-        created_at: new Date().toISOString(),
-      },
-      { onConflict: "id" }
-    )
-    .select("id")
-    .single();
-
-  if (agentError || !newAgent) {
-    console.error("[AGENT] Failed to create agent row:", agentError?.message);
-    return null;
-  }
-
-  console.log(`[AGENT] Created timelock-agent: ${newAgent.id}`);
-  return newAgent.id;
-}
-
 /**
  * Main handler: auto-deliver a funded task using Claude AI.
  *
  * 1. Validate task is FUNDED
- * 2. Find/create timelock-agent, assign as seller if needed
- * 3. Wait 3 seconds (short delay to avoid Vercel timeout)
- * 4. Generate AI response via Anthropic Claude
- * 5. Atomic CAS transition FUNDED → DELIVERED
+ * 2. Wait 3 seconds (short delay to avoid Vercel timeout)
+ * 3. Generate AI response via Anthropic Claude
+ * 4. Atomic CAS transition FUNDED → DELIVERED
+ *
+ * No agent row is created — the bot identity is stored in task metadata
+ * as agent_alias: "timelock-agent" to avoid RLS issues.
  */
 export async function handleAgentDelivery(
   taskId: string
@@ -95,32 +47,12 @@ export async function handleAgentDelivery(
     };
   }
 
-  // ---- 2. Find or create timelock-agent ----
-  const agentId = await getOrCreateAgent(supabase);
-  if (!agentId) {
-    return { success: false, error: "Failed to find or create timelock-agent" };
-  }
+  console.log(`[AGENT] Processing task ${taskId} (state: ${task.state})`);
 
-  // ---- 3. Assign as seller if no seller ----
-  if (!task.seller_agent_id) {
-    const { error: assignError } = await supabase
-      .from("tasks")
-      .update({ seller_agent_id: agentId })
-      .eq("id", taskId)
-      .eq("state", "FUNDED"); // CAS guard
-
-    if (assignError) {
-      console.error("[AGENT] Failed to assign seller:", assignError.message);
-      return { success: false, error: "Failed to assign seller" };
-    }
-
-    console.log(`[AGENT] Assigned timelock-agent as seller for task ${taskId}`);
-  }
-
-  // ---- 4. Short delay before AI generation ----
+  // ---- 2. Short delay before AI generation ----
   await new Promise((resolve) => setTimeout(resolve, AGENT_DELAY_MS));
 
-  // ---- 5. Re-check state (could have expired during wait) ----
+  // ---- 3. Re-check state (could have expired during wait) ----
   const { data: freshTask } = await supabase
     .from("tasks")
     .select("state, metadata")
@@ -134,7 +66,7 @@ export async function handleAgentDelivery(
     };
   }
 
-  // ---- 6. Generate AI response ----
+  // ---- 4. Generate AI response ----
   const taskType = parseTaskType(task.description);
   const systemPrompt = SYSTEM_PROMPTS[taskType];
 
@@ -164,7 +96,7 @@ export async function handleAgentDelivery(
     return { success: false, error: `AI generation failed: ${errMsg}` };
   }
 
-  // ---- 7. Atomic CAS: FUNDED → DELIVERED ----
+  // ---- 5. Atomic CAS: FUNDED → DELIVERED ----
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const deliverableUrl = `${appUrl}/tasks/${taskId}`;
   const now = new Date().toISOString();
@@ -175,6 +107,7 @@ export async function handleAgentDelivery(
   const metadata = {
     ...(freshTask.metadata as Record<string, unknown>),
     agent_response: agentResponse,
+    agent_alias: AGENT_ALIAS,
     delivered_at: now,
     delivered_by: AGENT_ALIAS,
     ...(isLate ? { late: true } : {}),
@@ -199,7 +132,7 @@ export async function handleAgentDelivery(
   }
 
   console.log(
-    `[AGENT] ${taskId} → FUNDED → DELIVERED (type: ${taskType}, ${agentResponse.length} chars)`
+    `[AGENT] ✅ ${taskId} → FUNDED → DELIVERED (type: ${taskType}, ${agentResponse.length} chars)`
   );
   return { success: true };
 }
