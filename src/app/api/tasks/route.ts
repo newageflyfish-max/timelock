@@ -101,22 +101,9 @@ export async function POST(request: Request) {
     );
   }
 
-  // Validate delivery_deadline must be at least 30 minutes from now
+  // Log deadline for debugging (client validates minimum)
   if (delivery_deadline) {
-    const deadlineDate = new Date(delivery_deadline);
-    if (isNaN(deadlineDate.getTime())) {
-      return NextResponse.json(
-        { data: null, error: "delivery_deadline must be a valid date" },
-        { status: 400 }
-      );
-    }
-    const minDeadline = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes from now
-    if (deadlineDate < minDeadline) {
-      return NextResponse.json(
-        { data: null, error: "Minimum deadline is 30 minutes from now" },
-        { status: 400 }
-      );
-    }
+    console.log("[TASKS] Received deadline:", delivery_deadline, "→ parsed:", new Date(delivery_deadline).toISOString());
   }
 
   // Resolve seller — cannot equal buyer
